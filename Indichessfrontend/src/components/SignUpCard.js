@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import axios from "axios";
+import { API_BASE_URL } from "../config/api";
 
 function SignupCard({ handleToggleSignup }) {
 
@@ -14,7 +15,7 @@ function SignupCard({ handleToggleSignup }) {
 
     try {
       // Send signup request to backend
-      const response = await axios.post("http://localhost:8080/signup", {
+      const response = await axios.post(`${API_BASE_URL}/signup`, {
         username,
         emailId,
         password,
@@ -23,7 +24,7 @@ function SignupCard({ handleToggleSignup }) {
 
       console.log(response);
       // If signup is successful, redirect to login or home
-      if (response.status === 200) {
+      if (response.status === 201 || response.status === 200) {
         // console.log("Show login");
         handleToggleSignup();
       }

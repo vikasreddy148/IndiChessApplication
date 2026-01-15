@@ -81,7 +81,8 @@ public class MatchService {
 
                     if (player1 != null && player2 != null) {
                         // Create the match
-                        Match newMatch = matchRepo.save(new Match(player1, player2, IN_PROGRESS, 1));
+                        // currentPly is used to infer turn; start at 0 so Player1 (white) moves first.
+                        Match newMatch = matchRepo.save(new Match(player1, player2, IN_PROGRESS, 0));
                         Long matchId = newMatch.getId();
 
                         // Store match info

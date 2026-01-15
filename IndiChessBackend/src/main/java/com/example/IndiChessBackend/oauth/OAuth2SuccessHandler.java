@@ -2,14 +2,12 @@ package com.example.IndiChessBackend.oauth;
 
 import com.example.IndiChessBackend.model.User;
 import com.example.IndiChessBackend.repo.UserRepo;
-import com.example.IndiChessBackend.service.AuthService;
 import com.example.IndiChessBackend.service.JwtService;
-import com.example.IndiChessBackend.service.UserService;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
@@ -35,32 +33,46 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
 
         String email = oauthUser.getAttribute("email");
         String name = oauthUser.getAttribute("name");
+        String login = oauthUser.getAttribute("login"); // GitHub
+        String sub = oauthUser.getAttribute("sub");     // Google
 
-        System.out.println(email);
-        System.out.println(name);
+        // Choose a stable unique username for our system.
+        // Prefer email (unique), then GitHub login, then display name.
+        String desiredUsername = email != null ? email : (login != null ? login : name);
+        if (desiredUsername == null) {
+            desiredUsername = authentication.getName();
+        }
 
-        // Generate JWT token
-        String jwt = jwtService.generateToken(name);
-        System.out.println("Inside oauth Success");
-        System.out.println(jwt);
-
-        // Create or get user from the database (you should have a user service for this)
-        User user = userRepo.getUserByEmailId(email);
+        // Create or get user from the database
+        User user = email != null ? userRepo.getUserByEmailId(email) : userRepo.findByUsername(desiredUsername);
         if (user == null) {
             // User doesn't exist, create the user
+            User existing = userRepo.findByUsername(desiredUsername);
+            if (existing != null) {
+                // Extremely rare (name/login collision). Disambiguate using provider subject if present.
+                String suffix = (sub != null && !sub.isBlank()) ? sub : String.valueOf(System.currentTimeMillis());
+                desiredUsername = desiredUsername + "-" + suffix;
+            }
+
             user = new User();
             user.setEmailId(email);
-            user.setUsername(name); // Set the user's name (or other data if needed)
+            user.setUsername(desiredUsername);
             userRepo.save(user); // Save the new user to the database
         }
 
-        // Store JWT in HTTP-only cookie
-        Cookie jwtCookie = new Cookie("JWT", jwt);
-        jwtCookie.setHttpOnly(true); // Prevents JavaScript from accessing the cookie
-        jwtCookie.setPath("/"); // Make sure the cookie is accessible for the entire domain
-        jwtCookie.setMaxAge(3600); // Optional: set cookie expiration (e.g., 1 hour)
-        jwtCookie.setSecure(true); // Optional: set to true if using HTTPS
-        response.addCookie(jwtCookie); // Add the cookie to the response
+        // Generate JWT token using our system username (must match what UserDetailsService expects)
+        String jwt = jwtService.generateToken(user.getUsername());
+
+        // Store JWT in HTTP-only cookie (dev-friendly: secure=false on http://localhost)
+        ResponseCookie cookie = ResponseCookie.from("JWT", jwt)
+                .httpOnly(true)
+                .secure(false)
+                .sameSite("lax")
+                .path("/")
+                .maxAge(3600)
+                .build();
+        response.setHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+
         response.sendRedirect("http://localhost:3000/home");
 
     }

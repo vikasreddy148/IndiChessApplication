@@ -35,7 +35,6 @@ const Board = ({
 
   // piece, prow, pcol, arow, acol
   const [allMoves, setAllMoves] = useState([]);
-  const [prevAllMoves, setPrevAllMoves] = useState([]);
 
   const [blackKingCoordinates, setBlackKingCoordinates] = useState([0,4]);
   const [whiteKingCoordinates, setWhiteKingCoordinates] = useState([7,4]);
@@ -58,7 +57,7 @@ const Board = ({
   const [rooksMoved, setRooksMoved] = useState([false,false,false,false]);
 
   // MODIFICATION 3: Add state for opponent's move
-  const [lastOpponentMove, setLastOpponentMove] = useState(null);
+  const lastOpponentMoveRef = useRef(null);
 
   // Handle window resize
   const updateBoardSize = () => {
@@ -98,40 +97,64 @@ const Board = ({
     }
   }, [isMyTurn, playerColor]);
 
+  // Recompute all legal-ish moves for the side to move whenever board/turn changes
   useEffect(() => {
-    getMovesOfPlayer();  
+    const computedMoves = [];
+
+    for (let i = 0; i < 8; i++) {
+      for (let j = 0; j < 8; j++) {
+        const piece = board[i][j];
+        if (
+          piece &&
+          ((isUpperCase(piece) && isWhiteTurn) || (!isUpperCase(piece) && !isWhiteTurn))
+        ) {
+          const newMoves = getValidMoves(piece, i, j);
+          computedMoves.push(...newMoves);
+        }
+      }
+    }
+
+    setAllMoves(computedMoves);
+    // getValidMoves is intentionally omitted from deps: it's defined inline in this component and
+    // already derives entirely from `board` / `isWhiteTurn` (which we *do* depend on).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isWhiteTurn, board]);
 
   // MODIFICATION 5: Handle opponent's move from WebSocket
   // Update the validation in useEffect or applyOpponentMove:
-useEffect(() => {
-    if (opponentMove && opponentMove !== lastOpponentMove) {
-        console.log("📥 New opponent move received:", opponentMove);
-        
-        // Accept BOTH structures:
-        // 1. Nested: opponentMove.from && opponentMove.to
-        // 2. Flat: opponentMove.fromRow !== undefined && opponentMove.fromCol !== undefined
-        
-        const hasNestedStructure = opponentMove.from && opponentMove.to;
-        const hasFlatStructure = opponentMove.fromRow !== undefined && opponentMove.fromCol !== undefined && 
-                                 opponentMove.toRow !== undefined && opponentMove.toCol !== undefined;
-        
-        if (!hasNestedStructure && !hasFlatStructure) {
-            console.error("❌ Invalid opponent move structure:", opponentMove);
-            return;
-        }
-        
-        // Check if this is actually opponent's move (not our own echo)
-        if (opponentMove.playerColor === playerColor) {
-            console.log("👤 Ignoring own move (echo)");
-            return;
-        }
-        
-        console.log(`👤 Processing opponent's (${opponentMove.playerColor}) move`);
-        applyOpponentMove(opponentMove);
-        setLastOpponentMove(opponentMove);
+  useEffect(() => {
+    if (!opponentMove) return;
+    if (opponentMove === lastOpponentMoveRef.current) return;
+
+    console.log("📥 New opponent move received:", opponentMove);
+
+    // Accept BOTH structures:
+    // 1. Nested: opponentMove.from && opponentMove.to
+    // 2. Flat: opponentMove.fromRow !== undefined && opponentMove.fromCol !== undefined
+    const hasNestedStructure = opponentMove.from && opponentMove.to;
+    const hasFlatStructure =
+      opponentMove.fromRow !== undefined &&
+      opponentMove.fromCol !== undefined &&
+      opponentMove.toRow !== undefined &&
+      opponentMove.toCol !== undefined;
+
+    if (!hasNestedStructure && !hasFlatStructure) {
+      console.error("❌ Invalid opponent move structure:", opponentMove);
+      return;
     }
-}, [opponentMove]);
+
+    // Check if this is actually opponent's move (not our own echo)
+    if (opponentMove.playerColor === playerColor) {
+      console.log("👤 Ignoring own move (echo)");
+      lastOpponentMoveRef.current = opponentMove;
+      return;
+    }
+
+    console.log(`👤 Processing opponent's (${opponentMove.playerColor}) move`);
+    applyOpponentMove(opponentMove);
+    lastOpponentMoveRef.current = opponentMove;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opponentMove, playerColor]);
 
 const applyOpponentMove = (moveData) => {
     console.log("📬 Applying opponent move:", moveData);
@@ -153,7 +176,7 @@ const applyOpponentMove = (moveData) => {
         from = moveData.from;
         to = moveData.to;
         console.log("📋 Using nested object structure");
-    } else if (moveData.fromRow !== undefined && moveData.fromCol !== undefined && 
+    } else if (moveData.fromRow !== undefined && moveData.fromCol !== undefined &&
                moveData.toRow !== undefined && moveData.toCol !== undefined) {
         // Structure 1: Flat fields
         from = { row: moveData.fromRow, col: moveData.fromCol };
@@ -169,20 +192,35 @@ const applyOpponentMove = (moveData) => {
     }
     
     const { piece, promotedTo, capturedPiece, castled, isPromotion, isEnPassant, board: newBoardFromData } = moveData;
+    const computedFenBefore = moveData.fenBefore || convertBoardToFEN(board);
+    let boardAfter = null;
     
     // Validate coordinates
-    if (from.row === undefined || from.col === undefined || 
-        to.row === undefined || to.col === undefined) {
-        console.error("❌ Invalid coordinates:", { from, to });
+    const fromRow = Number(from?.row);
+    const fromCol = Number(from?.col);
+    const toRow = Number(to?.row);
+    const toCol = Number(to?.col);
+
+    const isValidCoord = (n) => Number.isInteger(n) && n >= 0 && n < 8;
+
+    if (![fromRow, fromCol, toRow, toCol].every(isValidCoord)) {
+        console.error("❌ Invalid coordinates:", { from, to, fromRow, fromCol, toRow, toCol });
         return;
     }
     
-    console.log(`🎯 Opponent move: ${piece} from [${from.row},${from.col}] to [${to.row},${to.col}]`);
+    console.log(`🎯 Opponent move: ${piece} from [${fromRow},${fromCol}] to [${toRow},${toCol}]`);
     
     // OPTION 1: If board is provided in moveData, use it directly (simpler and more reliable)
-    if (newBoardFromData && Array.isArray(newBoardFromData) && newBoardFromData.length === 8) {
+    const isValidBoard =
+        newBoardFromData &&
+        Array.isArray(newBoardFromData) &&
+        newBoardFromData.length === 8 &&
+        newBoardFromData.every((r) => Array.isArray(r) && r.length === 8);
+
+    if (isValidBoard) {
         console.log("✅ Using board from move data");
         setBoard(newBoardFromData);
+        boardAfter = newBoardFromData;
         
         // Update king coordinates based on new board
         for (let row = 0; row < 8; row++) {
@@ -198,26 +236,25 @@ const applyOpponentMove = (moveData) => {
     } else {
         // OPTION 2: Apply move manually to current board
         console.log("⚠️ No board in move data, applying move manually");
-        const newBoard = [...board];
-        const fenBefore = convertBoardToFEN(board);
+        const newBoard = board.map((r) => [...r]);
         
         // Handle promotion
         if (isPromotion && promotedTo) {
             console.log(`♟️ Promotion to: ${promotedTo}`);
-            newBoard[to.row][to.col] = promotedTo;
+            newBoard[toRow][toCol] = promotedTo;
         } else {
-            newBoard[to.row][to.col] = piece;
+            newBoard[toRow][toCol] = piece;
         }
         
-        newBoard[from.row][from.col] = "";
+        newBoard[fromRow][fromCol] = "";
         
         // Handle en passant capture
         if (isEnPassant) {
             console.log("⚡ En passant capture");
             if (piece === 'p') {
-                newBoard[to.row - 1][to.col] = "";
+                if (toRow - 1 >= 0) newBoard[toRow - 1][toCol] = "";
             } else if (piece === 'P') {
-                newBoard[to.row + 1][to.col] = "";
+                if (toRow + 1 < 8) newBoard[toRow + 1][toCol] = "";
             }
         }
         
@@ -245,12 +282,13 @@ const applyOpponentMove = (moveData) => {
         
         // Update board
         setBoard(newBoard);
+        boardAfter = newBoard;
         
         // Update king coordinates
         if (piece === 'K') {
-            setWhiteKingCoordinates([to.row, to.col]);
+            setWhiteKingCoordinates([toRow, toCol]);
         } else if (piece === 'k') {
-            setBlackKingCoordinates([to.row, to.col]);
+            setBlackKingCoordinates([toRow, toCol]);
         }
         
         // Update castling rights
@@ -262,34 +300,35 @@ const applyOpponentMove = (moveData) => {
         
         // Update rooks moved
         if (piece === 'R') {
-            if (from.row === 7) {
-                if (from.col === 0) setRooksMoved([rooksMoved[0], true, rooksMoved[2], rooksMoved[3]]);
-                else if (from.col === 7) setRooksMoved([true, rooksMoved[1], rooksMoved[2], rooksMoved[3]]);
+            if (fromRow === 7) {
+                if (fromCol === 0) setRooksMoved([rooksMoved[0], true, rooksMoved[2], rooksMoved[3]]);
+                else if (fromCol === 7) setRooksMoved([true, rooksMoved[1], rooksMoved[2], rooksMoved[3]]);
             }
         } else if (piece === 'r') {
-            if (from.row === 0) {
-                if (from.col === 0) setRooksMoved([rooksMoved[0], rooksMoved[1], rooksMoved[2], true]);
-                else if (from.col === 7) setRooksMoved([rooksMoved[0], rooksMoved[1], true, rooksMoved[3]]);
+            if (fromRow === 0) {
+                if (fromCol === 0) setRooksMoved([rooksMoved[0], rooksMoved[1], rooksMoved[2], true]);
+                else if (fromCol === 7) setRooksMoved([rooksMoved[0], rooksMoved[1], true, rooksMoved[3]]);
             }
         }
     }
     
     // Update move history locally
-    const moveNotation = moveData.moveNotation || createMoveNotation(from, to, piece, capturedPiece, castled, board);
-    const fenAfter = moveData.fenAfter || convertBoardToFEN(board);
-    const fenBefore = moveData.fenBefore || convertBoardToFEN(board);
+    const moveNotation = moveData.moveNotation || createMoveNotation(from, to, piece, capturedPiece, castled);
+    const computedFenAfter =
+        moveData.fenAfter || (boardAfter ? convertBoardToFEN(boardAfter) : convertBoardToFEN(board));
     
     // Add to move history
     const moveToAdd = {
         piece,
-        moveFrom: `${String.fromCharCode('a'.charCodeAt(0) + from.col)}${8-from.row}`,
-        moveTo: `${String.fromCharCode('a'.charCodeAt(0) + to.col)}${8-to.row}`,
-        sqnumfrom: 8-from.row,
-        sqnumto: 8-to.row,
-        tc: to.col,
-        tr: to.row,
-        fenBefore,
-        fenAfter,
+        moveFrom: `${String.fromCharCode('a'.charCodeAt(0) + fromCol)}${8-fromRow}`,
+        moveTo: `${String.fromCharCode('a'.charCodeAt(0) + toCol)}${8-toRow}`,
+        sqnumfrom: 8-fromRow,
+        sqnumto: 8-toRow,
+        tc: toCol,
+        tr: toRow,
+        moveNotation,
+        fenBefore: computedFenBefore,
+        fenAfter: computedFenAfter,
         createdAt: new Date().toISOString(),
         isOpponentMove: true,
         playerColor: moveData.playerColor || 'unknown'
@@ -298,13 +337,17 @@ const applyOpponentMove = (moveData) => {
     addMove(moveToAdd);
     
     // Update turn locally
-    setIsWhiteTurn(!isWhiteTurn);
+    if (typeof moveData.isWhiteTurn === "boolean") {
+        setIsWhiteTurn(moveData.isWhiteTurn);
+    } else {
+        setIsWhiteTurn((prev) => !prev);
+    }
     
     console.log("✅ Opponent move applied successfully");
 };
 
 // Helper function to create move notation (if not provided)
-const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
+const createMoveNotation = (from, to, piece, capturedPiece, castled) => {
     if (castled) {
         return to.col === 6 ? "O-O" : "O-O-O";
     }
@@ -397,7 +440,7 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
 
   const isSquareUnderAttack = (row, col) => {
     for (let i = 0; i < allMoves.length; i++) {
-      const [piece, prow, pcol, arow, acol] = allMoves[i];
+      const [, , , arow, acol] = allMoves[i];
       if (arow === row && acol === col) {
         return true;
       }
@@ -414,33 +457,33 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
         // ... (your existing pawn logic)
         const direction = piece === "p" ? 1 : -1;
         if (board[row + direction]) {
-          if(board[row+direction][col] == "")
+          if (board[row + direction][col] === "")
           moves.push([piece, row, col, row + direction, col]);
           if(col-1>=0){
-            if(piece === "p" && board[row+direction][col-1]!= "" && isUpperCase(board[row+direction][col-1])){
+            if (piece === "p" && board[row + direction][col - 1] !== "" && isUpperCase(board[row + direction][col - 1])) {
               moves.push([piece, row, col,row + direction, col-1]);
             }
-            else if(piece === "P" && board[row+direction][col-1]!= "" && !isUpperCase(board[row+direction][col-1])){
+            else if (piece === "P" && board[row + direction][col - 1] !== "" && !isUpperCase(board[row + direction][col - 1])) {
               moves.push([piece, row, col,row + direction, col-1]);
             }
           }
           if(col+1<8){
-            if(piece === "p" && board[row+direction][col+1]!= "" && isUpperCase(board[row+direction][col+1])){
+            if (piece === "p" && board[row + direction][col + 1] !== "" && isUpperCase(board[row + direction][col + 1])) {
               moves.push([piece, row, col,row + direction, col+1]);
             }
-            else if(piece === "P" && board[row+direction][col+1]!= "" && !isUpperCase(board[row+direction][col+1])){
+            else if (piece === "P" && board[row + direction][col + 1] !== "" && !isUpperCase(board[row + direction][col + 1])) {
               moves.push([piece, row, col,row + direction, col+1]);
             }
           }
         }
-          if((row == 1 && piece === "p" &&  board[row+2*direction][col] == "" && board[row+direction][col] == "")
-          || (row == 6 && piece === "P" &&  board[row+2*direction][col] == "" && board[row+direction][col] == ""))
+          if((row === 1 && piece === "p" &&  board[row+2*direction][col] === "" && board[row+direction][col] === "")
+          || (row === 6 && piece === "P" &&  board[row+2*direction][col] === "" && board[row+direction][col] === ""))
           moves.push([piece, row, col,row + 2*direction, col]);
           
-          if((row === 3 && piece === "P" && prevMove.piece === "p" && 
+          if((row === 3 && piece === "P" && prevMove && prevMove.piece === "p" && 
             Math.abs(prevMove.sqnumfrom-prevMove.sqnumto) === 2 && Math.abs(col-prevMove.tc)===1)
           ||
-            (row === 4 && piece === "p" && prevMove.piece === "P" && 
+            (row === 4 && piece === "p" && prevMove && prevMove.piece === "P" && 
             Math.abs(prevMove.sqnumfrom-prevMove.sqnumto) === 2 && Math.abs(col-prevMove.tc)===1)
           )
           moves.push([piece, row, col,row + direction, prevMove.tc]);
@@ -451,8 +494,8 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
         // ... (your existing rook logic)
         let forwardMotion = true, backwardMotion = true, leftMotion = true, rightMotion = true;
         for (let i = 1; i < 8; i++) {
-          if (forwardMotion && row + i < 8 && board[row + i][col]== "") moves.push([piece, row, col,row + i, col]);
-          else if(forwardMotion && row + i < 8 && board[row + i][col]!= ""){
+          if (forwardMotion && row + i < 8 && board[row + i][col] === "") moves.push([piece, row, col,row + i, col]);
+          else if(forwardMotion && row + i < 8 && board[row + i][col] !== ""){
             let rook = board[row][col];
             let attackPoint = board[row+i][col];
             if( (isUpperCase(rook) && !isUpperCase(attackPoint)) ||
@@ -460,8 +503,8 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
                   moves.push([piece, row, col,row + i, col]);
             forwardMotion = false;
           }
-          if (backwardMotion && row - i >= 0 && board[row - i][col]=="") moves.push([piece, row, col,row - i, col]);
-          else if(backwardMotion && row - i >= 0 && board[row - i][col]!=""){
+          if (backwardMotion && row - i >= 0 && board[row - i][col] === "") moves.push([piece, row, col,row - i, col]);
+          else if(backwardMotion && row - i >= 0 && board[row - i][col] !== ""){
             let rook = board[row][col];
             let attackPoint = board[row-i][col];
             if( (isUpperCase(rook) && !isUpperCase(attackPoint)) ||
@@ -469,8 +512,8 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
                   moves.push([piece, row, col,row - i, col]);
             backwardMotion = false;
           }
-          if (rightMotion && col + i < 8 && !board[row][col + i]) moves.push([piece, row, col,row, col + i]);
-          else if(rightMotion && col + i < 8 && board[row][col+i]!=""){
+          if (rightMotion && col + i < 8 && board[row][col + i] === "") moves.push([piece, row, col,row, col + i]);
+          else if(rightMotion && col + i < 8 && board[row][col+i] !== ""){
             let rook = board[row][col];
             let attackPoint = board[row][col+i];
             if( (isUpperCase(rook) && !isUpperCase(attackPoint)) ||
@@ -478,8 +521,8 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
                   moves.push([piece, row, col,row, col+i]);
             rightMotion = false;
           }
-          if (leftMotion && col - i >= 0 && !board[row][col - i]) moves.push([piece, row, col,row, col - i]);
-          else if(leftMotion && col - i >= 0 && board[row][col-i]!=""){
+          if (leftMotion && col - i >= 0 && board[row][col - i] === "") moves.push([piece, row, col,row, col - i]);
+          else if(leftMotion && col - i >= 0 && board[row][col-i] !== ""){
             let rook = board[row][col];
             let attackPoint = board[row][col-i];
             if( (isUpperCase(rook) && !isUpperCase(attackPoint)) ||
@@ -501,7 +544,7 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
           if (row + r >= 0 && row + r < 8 && col + c >= 0 && col + c < 8) {
             let knight = board[row][col];
             let attackPoint = board[row+r][col+c];
-            if(attackPoint == "" || 
+            if(attackPoint === "" || 
               (isUpperCase(knight) && !isUpperCase(attackPoint)) ||
               (!isUpperCase(knight) && isUpperCase(attackPoint)))
             moves.push([piece, row, col,row + r, col + c]);
@@ -546,8 +589,8 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
         bleftdiag = true, brightdiag = true;
 
         for (let i = 1; i < 8; i++) {
-          if (tleftdiag && row - i >= 0 && col - i >= 0 && !board[row - i][col - i]) moves.push([piece, row, col,row - i, col - i]);
-          else if(tleftdiag && row - i >= 0 && col - i >= 0 && board[row - i][col - i]!=""){
+          if (tleftdiag && row - i >= 0 && col - i >= 0 && board[row - i][col - i] === "") moves.push([piece, row, col,row - i, col - i]);
+          else if(tleftdiag && row - i >= 0 && col - i >= 0 && board[row - i][col - i] !== ""){
             let bishop = board[row][col];
             let attackPoint = board[row-i][col-i];
             if( (isUpperCase(bishop) && !isUpperCase(attackPoint)) ||
@@ -555,8 +598,8 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
                   moves.push([piece, row, col,row - i, col - i]);
             tleftdiag = false;
           }
-          if (trightdiag && row - i >= 0 && col + i < 8 && !board[row - i][col + i]) moves.push([piece, row, col,row - i, col + i]);
-          else if(trightdiag && row - i >= 0 && col + i < 8 && board[row - i][col + i]!=""){
+          if (trightdiag && row - i >= 0 && col + i < 8 && board[row - i][col + i] === "") moves.push([piece, row, col,row - i, col + i]);
+          else if(trightdiag && row - i >= 0 && col + i < 8 && board[row - i][col + i] !== ""){
             let bishop = board[row][col];
             let attackPoint = board[row-i][col+i];
             if( (isUpperCase(bishop) && !isUpperCase(attackPoint)) ||
@@ -564,8 +607,8 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
                   moves.push([piece, row, col,row - i, col + i]);
             trightdiag = false;
           }
-          if (bleftdiag && row + i < 8 && col - i >= 0 && !board[row + i][col - i]) moves.push([piece, row, col,row + i, col - i]);
-          else if(bleftdiag && row + i < 8 && col - i >= 0 && board[row + i][col - i]!=""){
+          if (bleftdiag && row + i < 8 && col - i >= 0 && board[row + i][col - i] === "") moves.push([piece, row, col,row + i, col - i]);
+          else if(bleftdiag && row + i < 8 && col - i >= 0 && board[row + i][col - i] !== ""){
             let bishop = board[row][col];
             let attackPoint = board[row+i][col-i];
             if( (isUpperCase(bishop) && !isUpperCase(attackPoint)) ||
@@ -573,8 +616,8 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
                   moves.push([piece, row, col,row + i, col - i]);
             bleftdiag = false;
           }
-          if (brightdiag && row + i < 8 && col + i < 8 && !board[row + i][col + i]) moves.push([piece, row, col,row + i, col + i]);
-          else if(brightdiag && row + i < 8 && col + i < 8 && board[row + i][col + i]!=""){
+          if (brightdiag && row + i < 8 && col + i < 8 && board[row + i][col + i] === "") moves.push([piece, row, col,row + i, col + i]);
+          else if(brightdiag && row + i < 8 && col + i < 8 && board[row + i][col + i] !== ""){
             let bishop = board[row][col];
             let attackPoint = board[row+i][col+i];
             if( (isUpperCase(bishop) && !isUpperCase(attackPoint)) ||
@@ -589,8 +632,8 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
         // ... (your existing queen logic)
         let qforwardMotion = true, qbackwardMotion = true, qleftMotion = true, qrightMotion = true;
         for (let i = 1; i < 8; i++) {
-          if (qforwardMotion && row + i < 8 && board[row + i][col]== "") moves.push([piece, row, col,row + i, col]);
-          else if(qforwardMotion && row + i < 8 && board[row + i][col]!= ""){
+          if (qforwardMotion && row + i < 8 && board[row + i][col] === "") moves.push([piece, row, col,row + i, col]);
+          else if(qforwardMotion && row + i < 8 && board[row + i][col] !== ""){
             let rook = board[row][col];
             let attackPoint = board[row+i][col];
             if( (isUpperCase(rook) && !isUpperCase(attackPoint)) ||
@@ -598,8 +641,8 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
                   moves.push([piece, row, col,row + i, col]);
             qforwardMotion = false;
           }
-          if (qbackwardMotion && row - i >= 0 && board[row - i][col]=="") moves.push([piece, row, col,row - i, col]);
-          else if(qbackwardMotion && row - i >= 0 && board[row - i][col]!=""){
+          if (qbackwardMotion && row - i >= 0 && board[row - i][col] === "") moves.push([piece, row, col,row - i, col]);
+          else if(qbackwardMotion && row - i >= 0 && board[row - i][col] !== ""){
             let rook = board[row][col];
             let attackPoint = board[row-i][col];
             if( (isUpperCase(rook) && !isUpperCase(attackPoint)) ||
@@ -607,8 +650,8 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
                   moves.push([piece, row, col,row - i, col]);
             qbackwardMotion = false;
           }
-          if (qrightMotion && col + i < 8 && !board[row][col + i]) moves.push([piece, row, col,row, col + i]);
-          else if(qrightMotion && col + i < 8 && board[row][col+i]!=""){
+          if (qrightMotion && col + i < 8 && board[row][col + i] === "") moves.push([piece, row, col,row, col + i]);
+          else if(qrightMotion && col + i < 8 && board[row][col+i] !== ""){
             let rook = board[row][col];
             let attackPoint = board[row][col+i];
             if( (isUpperCase(rook) && !isUpperCase(attackPoint)) ||
@@ -616,8 +659,8 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
                   moves.push([piece, row, col,row, col+i]);
             qrightMotion = false;
           }
-          if (qleftMotion && col - i >= 0 && !board[row][col - i]) moves.push([piece, row, col,row, col - i]);
-          else if(qleftMotion && col - i >= 0 && board[row][col-i]!=""){
+          if (qleftMotion && col - i >= 0 && board[row][col - i] === "") moves.push([piece, row, col,row, col - i]);
+          else if(qleftMotion && col - i >= 0 && board[row][col-i] !== ""){
             let rook = board[row][col];
             let attackPoint = board[row][col-i];
             if( (isUpperCase(rook) && !isUpperCase(attackPoint)) ||
@@ -631,8 +674,8 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
         qbleftdiag = true, qbrightdiag = true;
 
         for (let i = 1; i < 8; i++) {
-          if (qtleftdiag && row - i >= 0 && col - i >= 0 && !board[row - i][col - i]) moves.push([piece, row, col,row - i, col - i]);
-          else if(qtleftdiag && row - i >= 0 && col - i >= 0 && board[row - i][col - i]!=""){
+          if (qtleftdiag && row - i >= 0 && col - i >= 0 && board[row - i][col - i] === "") moves.push([piece, row, col,row - i, col - i]);
+          else if(qtleftdiag && row - i >= 0 && col - i >= 0 && board[row - i][col - i] !== ""){
             let bishop = board[row][col];
             let attackPoint = board[row-i][col-i];
             if( (isUpperCase(bishop) && !isUpperCase(attackPoint)) ||
@@ -640,8 +683,8 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
                   moves.push([piece, row, col,row - i, col - i]);
             qtleftdiag = false;
           }
-          if (qtrightdiag && row - i >= 0 && col + i < 8 && !board[row - i][col + i]) moves.push([piece, row, col,row - i, col + i]);
-          else if(qtrightdiag && row - i >= 0 && col + i < 8 && board[row - i][col + i]!=""){
+          if (qtrightdiag && row - i >= 0 && col + i < 8 && board[row - i][col + i] === "") moves.push([piece, row, col,row - i, col + i]);
+          else if(qtrightdiag && row - i >= 0 && col + i < 8 && board[row - i][col + i] !== ""){
             let bishop = board[row][col];
             let attackPoint = board[row-i][col+i];
             if( (isUpperCase(bishop) && !isUpperCase(attackPoint)) ||
@@ -649,8 +692,8 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
                   moves.push([piece, row, col,row - i, col + i]);
             qtrightdiag = false;
           }
-          if (qbleftdiag && row + i < 8 && col - i >= 0 && !board[row + i][col - i]) moves.push([piece, row, col,row + i, col - i]);
-          else if(qbleftdiag && row + i < 8 && col - i >= 0 && board[row + i][col - i]!=""){
+          if (qbleftdiag && row + i < 8 && col - i >= 0 && board[row + i][col - i] === "") moves.push([piece, row, col,row + i, col - i]);
+          else if(qbleftdiag && row + i < 8 && col - i >= 0 && board[row + i][col - i] !== ""){
             let bishop = board[row][col];
             let attackPoint = board[row+i][col-i];
             if( (isUpperCase(bishop) && !isUpperCase(attackPoint)) ||
@@ -658,8 +701,8 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
                   moves.push([piece, row, col,row + i, col - i]);
             qbleftdiag = false;
           }
-          if (qbrightdiag && row + i < 8 && col + i < 8 && !board[row + i][col + i]) moves.push([piece, row, col,row + i, col + i]);
-          else if(qbrightdiag && row + i < 8 && col + i < 8 && board[row + i][col + i]!=""){
+          if (qbrightdiag && row + i < 8 && col + i < 8 && board[row + i][col + i] === "") moves.push([piece, row, col,row + i, col + i]);
+          else if(qbrightdiag && row + i < 8 && col + i < 8 && board[row + i][col + i] !== ""){
             let bishop = board[row][col];
             let attackPoint = board[row+i][col+i];
             if( (isUpperCase(bishop) && !isUpperCase(attackPoint)) ||
@@ -895,13 +938,15 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
     
     // MODIFICATION 12: Prepare and send move data to server
     const moveData = {
-      from: { row: fromRow, col: fromCol },
-      to: { row: row, col: col },
+      fromRow: fromRow,
+      fromCol: fromCol,
+      toRow: row,
+      toCol: col,
       piece: piece,
       promotedTo: promotedPiece,
-      capturedPiece: capturedPiece,
-      castled: castled,
-      isEnPassant: isEnPassant,
+      capturedPiece: capturedPiece || "",
+      castled: castled || false,
+      isEnPassant: isEnPassant || false,
       fenBefore: fenBefore,
       fenAfter: convertBoardToFEN(newBoard),
       board: newBoard,
@@ -923,20 +968,6 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled, board) => {
     setIsWhiteTurn(!isWhiteTurn);
     setShowModal(false);
   };
-
-  const getMovesOfPlayer = () => {
-    setPrevAllMoves(allMoves);
-    setAllMoves([]);
-    for(let i = 0; i<8; i++){
-      for(let j = 0; j<8; j++){
-        const piece = board[i][j];
-        if(piece && ( (isUpperCase(piece) && isWhiteTurn) || (!isUpperCase(piece) && !isWhiteTurn) ) ){
-            const newMoves = getValidMoves(piece, i, j);
-            setAllMoves((moves) => [...moves, ...newMoves]);
-        }
-      }
-    }
-  }
 
   // MODIFICATION 13: Update handleDrop to send move to server
   const handleDrop = (e, row, col) => {

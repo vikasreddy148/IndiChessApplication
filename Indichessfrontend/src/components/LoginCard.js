@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { API_BASE_URL } from "../config/api";
 
 function LoginCard({ handleToggleSignup }) {
   const navigate = useNavigate();
@@ -14,12 +15,11 @@ function LoginCard({ handleToggleSignup }) {
 
     try {
       // Send login request to backend
-      const response = await axios.post("https://localhost:8080/login", {
-        username,
-        password,
-        withCredentials: true
-        
-      });
+      const response = await axios.post(
+        `${API_BASE_URL}/login`,
+        { username, password },
+        { withCredentials: true }
+      );
 
       // If login is successful, redirect to home
       if (response) {
@@ -70,10 +70,10 @@ function LoginCard({ handleToggleSignup }) {
       </form>
 
       <div className="oauth-buttons">
-        <a href="http://localhost:8080/oauth2/authorization/google">
+        <a href={`${API_BASE_URL}/oauth2/authorization/google`}>
           <button className="btn-google">Login with Google</button>
         </a>
-        <a href="http://localhost:8080/oauth2/authorization/github">
+        <a href={`${API_BASE_URL}/oauth2/authorization/github`}>
           <button className="btn-github">Login with GitHub</button>
         </a>
       </div>

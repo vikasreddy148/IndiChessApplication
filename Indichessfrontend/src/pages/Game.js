@@ -5,6 +5,7 @@ import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { API_BASE_URL } from "../config/api";
 
 const Game = () => {
   const { matchId } = useParams();
@@ -12,21 +13,7 @@ const Game = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState(null);
   const [gameData, setGameData] = useState(null);
-  const [playerColor, setPlayerColor] = useState('white');
-
-  // Should be fetching from backend
-  useEffect(() => {
-    fetch(`http://localhost:8080/game/${matchId}`, {
-    method: 'GET',
-    credentials: 'include'
-    })
-    .then(response => response.json())
-    .then(data => {
-        console.log("Game details response:", data);
-        setPlayerColor(data.playerColor); // Make sure this field exists
-        setGameData(data);
-    });
-  }, [matchId]);
+  const [playerColor, setPlayerColor] = useState(null);
 
   useEffect(() => {
     if (!matchId) {
@@ -34,27 +21,43 @@ const Game = () => {
       return;
     }
 
-    // To this:
-  fetch(`http://localhost:8080/game/${matchId}`, {
-      method: 'GET',
-      credentials: 'include'  // Important for cookies
-  })
-    .then(response => {
-      if (!response.ok) throw new Error('Failed to fetch game data');
-      return response.json();
-    })
-    .then(data => {
-      setPlayerColor(data.playerColor); // 'white' or 'black'
-      setGameData(data);
-      console.log("Game data loaded:", data);
-    })
-    .catch(error => {
-      console.error('Error fetching game details:', error);
-      setError("Failed to load game details");
-    });
+    let cancelled = false;
+
+    const loadGame = async () => {
+      try {
+        // Match details are served by MatchController under /game/{matchId}
+        const response = await fetch(`${API_BASE_URL}/game/${matchId}`, {
+          method: "GET",
+          credentials: "include",
+        });
+
+        if (!response.ok) throw new Error("Failed to fetch game data");
+        const data = await response.json();
+
+        if (cancelled) return;
+
+        setPlayerColor(data.playerColor || "white");
+        setGameData(data);
+        setError(null);
+        console.log("Game data loaded:", data);
+      } catch (e) {
+        console.error("Error fetching game details:", e);
+        if (!cancelled) setError("Failed to load game details");
+      }
+    };
+
+    loadGame();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [matchId]);
+
+  useEffect(() => {
+    if (!matchId || !playerColor) return;
 
     // WebSocket connection
-    const socket = new SockJS('http://localhost:8080/ws');
+    const socket = new SockJS(`${API_BASE_URL}/ws`);
     const client = new Client({
       webSocketFactory: () => socket,
       reconnectDelay: 5000,
@@ -66,25 +69,6 @@ const Game = () => {
         console.log("Connected to WebSocket:", frame);
         setIsConnected(true);
         setError(null);
-        
-        // Subscribe to game updates
-        client.subscribe(`/topic/game/${matchId}`, (message) => {
-          console.log("Game update received:", message.body);
-          const update = JSON.parse(message.body);
-          setGameData(prev => ({ ...prev, ...update }));
-        });
-        
-        // Subscribe to move updates
-        client.subscribe(`/topic/moves/${matchId}`, (message) => {
-          console.log("Move received:", message.body);
-          const moveData = JSON.parse(message.body);
-          // This will be handled in GameContainer
-        });
-        
-        // Subscribe to chat messages
-        client.subscribe(`/topic/chat/${matchId}`, (message) => {
-          console.log("Chat message:", message.body);
-        });
 
         // Notify server that player has joined
         client.publish({
@@ -123,7 +107,7 @@ const Game = () => {
         client.deactivate();
       }
     };
-  }, [matchId]);
+  }, [matchId, playerColor]);
 
   if (error) {
     return (

@@ -4,7 +4,8 @@ import GamePlayControlContainer from "./GamePlayControlContainer";
 
 const GameContainer = ({ matchId, stompClient, isConnected, playerColor, initialGameData }) => {
   const [moves, setMoves] = useState([]);
-  const [isMyTurn, setIsMyTurn] = useState(initialGameData?.isMyTurn || (playerColor === 'white'));
+  // Don't use `||` here: `false` is a valid value from server and must not be overridden.
+  const [isMyTurn, setIsMyTurn] = useState(initialGameData?.isMyTurn ?? (playerColor === 'white'));
   const [gameStatus, setGameStatus] = useState(initialGameData?.status || "Game started");
   const [opponentMove, setOpponentMove] = useState(null); // To trigger board updates
   const moveSubscriptionRef = useRef(null);

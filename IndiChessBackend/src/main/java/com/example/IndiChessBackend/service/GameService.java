@@ -147,6 +147,9 @@ public class GameService {
     }
 
     public MoveDTO processMove(Long matchId, MoveRequest moveRequest, Principal principal) {
+        if (principal == null) {
+            throw new RuntimeException("Unauthenticated WebSocket session");
+        }
         String username = principal.getName();
 
         // Add null checks for required fields
@@ -363,6 +366,9 @@ public class GameService {
     }
 
     public GameStatusDTO handlePlayerJoin(Long matchId, JoinRequest joinRequest, Principal principal) {
+        if (principal == null) {
+            throw new RuntimeException("Unauthenticated WebSocket session");
+        }
         String username = principal.getName();
 
         GameState gameState = activeGames.get(matchId);

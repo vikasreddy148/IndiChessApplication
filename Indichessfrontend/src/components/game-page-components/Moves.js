@@ -1,10 +1,11 @@
 import React, { useEffect } from "react";
+import { API_BASE_URL } from "../../config/api";
 
 const Moves = ({ moves }) => {
 
   // Function to send move data to the backend API
   const sendMoveToServer = (move) => {
-    fetch('http://localhost:8080/game', {
+    fetch(`${API_BASE_URL}/game`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

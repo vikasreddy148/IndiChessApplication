@@ -16,7 +16,6 @@ import java.util.Optional;
 @RestController
 @RequestMapping("/game")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000", allowCredentials = "true")
 public class MatchController {
 
     private final MatchService matchService;

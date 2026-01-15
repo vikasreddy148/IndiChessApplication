@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { FaFire, FaRegHandshake, FaRobot, FaChessPawn, FaTimes } from "react-icons/fa";
 import "../component-styles/GameInfo.css";
+import { API_BASE_URL } from "../../config/api";
 
 const GameInfo = ({ streak }) => {
   const navigate = useNavigate();
@@ -30,7 +31,7 @@ const GameInfo = ({ streak }) => {
     
     // Notify backend to remove from waiting queue
     try {
-      await fetch('http://localhost:8080/game/cancel-waiting', {
+      await fetch(`${API_BASE_URL}/game/cancel-waiting`, {
         method: 'POST',
         credentials: 'include',
       });
@@ -57,7 +58,7 @@ const GameInfo = ({ streak }) => {
       }
       
       try {
-        const response = await fetch('http://localhost:8080/game/check-match', {
+        const response = await fetch(`${API_BASE_URL}/game/check-match`, {
           method: 'GET',
           credentials: 'include',
         });
@@ -99,7 +100,7 @@ const GameInfo = ({ streak }) => {
     setSearchTime(0);
     
     try {
-      const response = await fetch('http://localhost:8080/game', {
+      const response = await fetch(`${API_BASE_URL}/game`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -19,7 +19,6 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/games")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000", allowCredentials = "true")
 public class GameController {
 
     private final GameService gameService;
@@ -44,6 +43,9 @@ public class GameController {
                               @Payload MoveRequest moveRequest,
                               Principal principal) {
         try {
+            if (principal == null) {
+                throw new RuntimeException("Unauthenticated WebSocket session");
+            }
             System.out.println("Received move for game " + matchId + " from " + principal.getName());
             return gameService.processMove(matchId, moveRequest, principal);
         } catch (Exception e) {
@@ -62,6 +64,9 @@ public class GameController {
                                           @Payload JoinRequest joinRequest,
                                           Principal principal) {
         try {
+            if (principal == null) {
+                throw new RuntimeException("Unauthenticated WebSocket session");
+            }
             System.out.println("Player " + principal.getName() + " joining game " + matchId);
             return gameService.handlePlayerJoin(matchId, joinRequest, principal);
         } catch (Exception e) {
@@ -79,6 +84,9 @@ public class GameController {
     public Map<String, Object> handleResign(@DestinationVariable Long matchId,
                                             Principal principal) {
         try {
+            if (principal == null) {
+                throw new RuntimeException("Unauthenticated WebSocket session");
+            }
             System.out.println("Player " + principal.getName() + " resigning from game " + matchId);
             gameService.handleResignation(matchId, principal.getName());
 
@@ -102,6 +110,9 @@ public class GameController {
     public Map<String, Object> handleDrawOffer(@DestinationVariable Long matchId,
                                                Principal principal) {
         try {
+            if (principal == null) {
+                throw new RuntimeException("Unauthenticated WebSocket session");
+            }
             System.out.println("Player " + principal.getName() + " offering draw in game " + matchId);
             gameService.handleDrawOffer(matchId, principal.getName());
 
@@ -124,6 +135,9 @@ public class GameController {
     public Map<String, Object> handleDrawAccept(@DestinationVariable Long matchId,
                                                 Principal principal) {
         try {
+            if (principal == null) {
+                throw new RuntimeException("Unauthenticated WebSocket session");
+            }
             System.out.println("Player " + principal.getName() + " accepting draw in game " + matchId);
 
             Map<String, Object> response = new HashMap<>();
@@ -148,6 +162,9 @@ public class GameController {
                                                  @Payload Map<String, String> chatMessage,
                                                  Principal principal) {
         try {
+            if (principal == null) {
+                throw new RuntimeException("Unauthenticated WebSocket session");
+            }
             System.out.println("Chat message from " + principal.getName() + " in game " + matchId);
 
             Map<String, Object> response = new HashMap<>();

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import LoginCard from '../components/LoginCard';
 import SignupCard from '../components/SignUpCard';
+import { API_BASE_URL } from "../config/api";
 
 function HomeCard() {
   const [showSignup, setShowSignup] = useState(false); // Track if we need to show SignupCard
@@ -12,7 +13,7 @@ function HomeCard() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const response = await fetch("http://localhost:8080/home", {
+        const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
           method: "GET",
           credentials: "include",
         });

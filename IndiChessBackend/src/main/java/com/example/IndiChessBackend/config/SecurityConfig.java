@@ -6,7 +6,8 @@ import com.example.IndiChessBackend.service.MyUserDetailsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.annotation.Order;
+import org.springframework.core.env.Environment;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -16,13 +17,13 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.NoOpPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 
@@ -34,6 +35,7 @@ public class SecurityConfig {
     private final MyUserDetailsService userDetailService;
     private final JwtFilter jwtFilter;
     private final OAuth2SuccessHandler oAuth2SuccessHandler;
+    private final Environment environment;
 
     @Bean
     PasswordEncoder passwordEncoder(){
@@ -57,10 +59,10 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // Allow only the frontend port (e.g., localhost:3000)
-        configuration.setAllowedOrigins(List.of("http://localhost:3000"));  // Frontend port
+        // Allow any localhost port (covers CRA dev server, etc.)
+        configuration.setAllowedOriginPatterns(List.of("http://localhost:*", "http://127.0.0.1:*"));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));  // Allow all HTTP methods (GET, POST, PUT, DELETE, etc.)
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Requested-With"));  // Allow all headers
+        configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true); // Allow credentials (cookies, JWT tokens)
 
         configuration.setMaxAge(3600L);
@@ -75,20 +77,36 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        return http
-                .cors(c -> c.configurationSource(corsConfigurationSource())) // Apply CORS configuration
-                .csrf(csrf -> csrf.disable())  // Disable CSRF for now (may re-enable if necessary)
+        http
+                .cors(c -> c.configurationSource(corsConfigurationSource()))
+                .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/login", "/signup", "/oauth2/**", "/login/oauth2/**").permitAll()
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers("/login", "/signup", "/logout", "/oauth2/**", "/login/oauth2/**").permitAll()
                         .anyRequest().authenticated()
                 )
-                .oauth2Login(oauth -> oauth
-                        .loginPage("/login") // Use custom page for OAuth login
-                        .successHandler(oAuth2SuccessHandler) // Handle success with custom handler
-                )
-                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // Allow session if needed
-                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class) // JWT filter for stateless API
-                .build();
+                // OAuth2 login needs a session (for state); JWT APIs still work fine with IF_REQUIRED.
+                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+
+        // We implement our own JSON logout endpoint in AuthController; disable Spring Security's default
+        // logout behavior (which redirects to /login?logout and causes 405s in our API-style setup).
+        http.logout(logout -> logout.disable());
+
+        // For SPA fetch/XHR calls we never want redirect loops; respond with 401 instead.
+        http.exceptionHandling(eh -> eh.authenticationEntryPoint((request, response, authException) -> {
+            response.sendError(401, "Unauthorized");
+        }));
+
+        // Only enable OAuth2 login if client registration is configured (prevents startup failure with blank env vars)
+        String googleClientId = environment.getProperty("spring.security.oauth2.client.registration.google.client-id");
+        if (StringUtils.hasText(googleClientId)) {
+            http.oauth2Login(oauth -> oauth
+                    .successHandler(oAuth2SuccessHandler)
+            );
+        }
+
+        return http.build();
     }
 
 

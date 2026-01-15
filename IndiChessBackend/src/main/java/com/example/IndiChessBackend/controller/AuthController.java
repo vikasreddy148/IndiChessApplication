@@ -8,6 +8,7 @@ import com.example.IndiChessBackend.service.JwtService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -16,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
@@ -26,7 +28,6 @@ import java.util.Map;
 @RestController
 @RequestMapping("/")
 @RequiredArgsConstructor
-@CrossOrigin(value = "http://localhost:3000", allowCredentials = "true")
 public class AuthController {
 
     private final AuthService authservice;
@@ -73,6 +74,48 @@ public class AuthController {
     public ResponseEntity<?> handleHome(){
         System.out.println("Home");
         return ResponseEntity.ok("Home");
+    }
+
+    /**
+     * SPA-friendly auth check endpoint.
+     * - 200 if authenticated (JWT cookie present/valid)
+     * - 401 handled by SecurityConfig entrypoint if unauthenticated
+     */
+    @GetMapping("api/auth/me")
+    public ResponseEntity<?> me() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("authenticated", false));
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "authenticated", true,
+                "username", auth.getName()
+        ));
+    }
+
+    @PostMapping("logout")
+    public ResponseEntity<?> logout(HttpServletRequest request, HttpServletResponse response) {
+        // Clear JWT cookie
+        ResponseCookie cookie = ResponseCookie.from("JWT", "")
+                .httpOnly(true)
+                .secure(false)
+                .sameSite("lax")
+                .path("/")
+                .maxAge(0)
+                .build();
+        response.setHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+
+        // Clear security context
+        SecurityContextHolder.clearContext();
+
+        // Invalidate any session (used by OAuth2 login state)
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            session.invalidate();
+        }
+
+        return ResponseEntity.ok(Map.of("loggedOut", true));
     }
 
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import SideNav from "../components/SideNav";
 import Header from "../components/Header";
 import GameInfo from "../components/game-page-components/GameInfo";
