@@ -1,6 +1,7 @@
 package com.example.IndiChessBackend.controller;
 import com.example.IndiChessBackend.model.DTO.*;
 import com.example.IndiChessBackend.service.GameService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
@@ -26,10 +27,9 @@ public class GameController {
     // REST endpoint to get game details
     @GetMapping("/{matchId}")
     public ResponseEntity<GameDTO> getGame(@PathVariable Long matchId,
-                                           @CookieValue(value = "JWT", required = false) String token) {
+                                           HttpServletRequest request) {
         try {
-            // In a real implementation, you'd validate the token and get user info
-            GameDTO game = gameService.getGameDetails(matchId, null); // Pass request if needed
+            GameDTO game = gameService.getGameDetails(matchId, request);
             return ResponseEntity.ok(game);
         } catch (Exception e) {
             return ResponseEntity.notFound().build();

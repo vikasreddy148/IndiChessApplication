@@ -2,6 +2,8 @@ package com.example.IndiChessBackend.controller;
 
 import com.example.IndiChessBackend.model.DTO.LoginDto;
 import com.example.IndiChessBackend.model.DTO.LoginResponseDto;
+import com.example.IndiChessBackend.model.DTO.SignupRequest;
+import com.example.IndiChessBackend.model.DTO.UserResponseDto;
 import com.example.IndiChessBackend.model.User;
 import com.example.IndiChessBackend.service.AuthService;
 import com.example.IndiChessBackend.service.JwtService;
@@ -24,6 +26,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/")
@@ -36,9 +39,17 @@ public class AuthController {
 
 
     @PostMapping("signup")
-    public ResponseEntity<User> handleSignup(@RequestBody User user){
-//        System.out.println(user);
-        return new ResponseEntity<>(authservice.save(user), HttpStatus.CREATED);
+    public ResponseEntity<UserResponseDto> handleSignup(@Valid @RequestBody SignupRequest signupRequest){
+        User saved = authservice.signup(signupRequest);
+        UserResponseDto dto = new UserResponseDto(
+                saved.getUserId(),
+                saved.getUsername(),
+                saved.getEmailId(),
+                saved.getRating(),
+                saved.getPfpUrl(),
+                saved.getCountry()
+        );
+        return new ResponseEntity<>(dto, HttpStatus.CREATED);
     }
 
     @PostMapping("login")

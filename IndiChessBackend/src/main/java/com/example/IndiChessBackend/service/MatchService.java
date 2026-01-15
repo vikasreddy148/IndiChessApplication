@@ -1,7 +1,9 @@
 package com.example.IndiChessBackend.service;
 
 import com.example.IndiChessBackend.model.Match;
+import com.example.IndiChessBackend.model.GameType;
 import com.example.IndiChessBackend.model.User;
+import com.example.IndiChessBackend.model.DTO.MatchmakingStatusResponse;
 import com.example.IndiChessBackend.repo.MatchRepo;
 import com.example.IndiChessBackend.repo.UserRepo;
 import jakarta.servlet.http.Cookie;
@@ -18,21 +20,23 @@ import static com.example.IndiChessBackend.model.MatchStatus.IN_PROGRESS;
 @Service
 public class MatchService {
 
-    // Store waiting players and their match IDs
-    private static final Map<String, Long> waitingPlayers = new ConcurrentHashMap<>();
-    private static final Map<Long, String[]> matchPlayers = new ConcurrentHashMap<>();
+    private static final long WAIT_TIMEOUT_MS = 90_000L;
+    // waiting queue per game type: username -> enqueuedAtMillis
+    private static final Map<GameType, Map<String, Long>> waitingByType = new ConcurrentHashMap<>();
 
     private final JwtService jwtService;
     private final UserRepo userRepo;
     private final MatchRepo matchRepo;
     private final GameService gameService;
+    private final MatchQueueService matchQueueService;
 
     @Autowired
-    MatchService(JwtService jwtService, UserRepo userRepo, MatchRepo matchRepo, GameService gameService) {
+    MatchService(JwtService jwtService, UserRepo userRepo, MatchRepo matchRepo, GameService gameService, MatchQueueService matchQueueService) {
         this.jwtService = jwtService;
         this.userRepo = userRepo;
         this.matchRepo = matchRepo;
         this.gameService = gameService;
+        this.matchQueueService = matchQueueService;
 
         // Clean up old entries periodically (optional)
         new Timer().schedule(new TimerTask() {
@@ -55,96 +59,113 @@ public class MatchService {
     }
 
     private void cleanupOldEntries() {
-        // Remove entries older than 5 minutes
-        long fiveMinutesAgo = System.currentTimeMillis() - (5 * 60 * 1000);
-        // You can add timestamp tracking if needed
+        long cutoff = System.currentTimeMillis() - WAIT_TIMEOUT_MS;
+        for (Map<String, Long> waiting : waitingByType.values()) {
+            waiting.entrySet().removeIf(e -> e.getValue() < cutoff);
+        }
     }
 
-    // In your existing MatchService, update the createMatch method
-    public Optional<Long> createMatch(HttpServletRequest request) {
+    public MatchmakingStatusResponse createMatch(HttpServletRequest request, GameType gameType) {
         String tk = getJwtFromCookie(request);
+        if (tk == null) {
+            throw new RuntimeException("Not authenticated");
+        }
         String userName = jwtService.extractUsername(tk);
 
         if (userName == null) {
-            return Optional.empty();
+            throw new RuntimeException("Invalid token");
         }
 
-        System.out.println("User " + userName + " requesting match");
+        if (gameType == null) {
+            gameType = GameType.STANDARD;
+        }
 
         synchronized(this) {
-            // Check if there's already a waiting player
-            for (String waitingPlayer : waitingPlayers.keySet()) {
-                if (!waitingPlayer.equals(userName)) {
-                    // Found opponent
-                    User player1 = userRepo.getUserByUsername(waitingPlayer);
+            // If the user already has a pending match, return it
+            Long already = matchQueueService.getPendingMatchId(userName);
+            if (already != null) {
+                return new MatchmakingStatusResponse("MATCHED", already, gameType);
+            }
+
+            // Ensure user isn't waiting in other queues
+            removeFromAllQueues(userName);
+
+            Map<String, Long> waiting = waitingByType.computeIfAbsent(gameType, gt -> new ConcurrentHashMap<>());
+            long now = System.currentTimeMillis();
+
+            // Find opponent in same queue (skip expired entries)
+            for (Map.Entry<String, Long> entry : waiting.entrySet()) {
+                String opponentName = entry.getKey();
+                long enqueuedAt = entry.getValue();
+                if (now - enqueuedAt > WAIT_TIMEOUT_MS) {
+                    waiting.remove(opponentName);
+                    continue;
+                }
+                if (!opponentName.equals(userName)) {
+                    User player1 = userRepo.getUserByUsername(opponentName);
                     User player2 = userRepo.getUserByUsername(userName);
-
                     if (player1 != null && player2 != null) {
-                        // Create the match
-                        // currentPly is used to infer turn; start at 0 so Player1 (white) moves first.
-                        Match newMatch = matchRepo.save(new Match(player1, player2, IN_PROGRESS, 0));
-                        Long matchId = newMatch.getId();
+                        // Remove opponent from queue
+                        waiting.remove(opponentName);
 
-                        // Store match info
-                        matchPlayers.put(matchId, new String[]{waitingPlayer, userName});
+                        // Create match (opponent is player1/white)
+                        Match match = new Match(player1, player2, IN_PROGRESS, 0);
+                        match.setGameType(gameType);
+                        Match saved = matchRepo.save(match);
 
-                        // Remove waiting player
-                        waitingPlayers.remove(waitingPlayer);
-
-                        System.out.println("Match created: " + matchId);
+                        Long matchId = saved.getId();
+                        matchQueueService.addPendingMatch(opponentName, userName, matchId);
 
                         // Initialize game state
                         gameService.getGameDetails(matchId, request);
 
-                        return Optional.of(matchId);
+                        return new MatchmakingStatusResponse("MATCHED", matchId, gameType);
                     }
                 }
             }
 
-            // No opponent found, add to waiting queue
-            waitingPlayers.put(userName, -1L);
-            System.out.println("User " + userName + " added to waiting queue");
-
-            return Optional.of(-1L);
+            // No opponent found, enqueue
+            waiting.put(userName, now);
+            return new MatchmakingStatusResponse("WAITING", null, gameType);
         }
     }
 
-    // Method for Player1 to check if match was created
-    public Optional<Long> checkMatch(HttpServletRequest request) {
+    public MatchmakingStatusResponse checkMatch(HttpServletRequest request, GameType gameType) {
         String tk = getJwtFromCookie(request);
+        if (tk == null) {
+            throw new RuntimeException("Not authenticated");
+        }
         String userName = jwtService.extractUsername(tk);
 
         if (userName == null) {
-            return Optional.empty();
+            throw new RuntimeException("Invalid token");
         }
 
         synchronized(this) {
-            // Check if user is in waitingPlayers
-            if (waitingPlayers.containsKey(userName)) {
-                // User is still waiting
-                return Optional.of(-1L);
+            Long matchId = matchQueueService.getPendingMatchId(userName);
+            if (matchId != null) {
+                return new MatchmakingStatusResponse("MATCHED", matchId, gameType);
             }
 
-            // Check if user has a match in matchPlayers
-            for (Map.Entry<Long, String[]> entry : matchPlayers.entrySet()) {
-                String[] players = entry.getValue();
-                if (players[0].equals(userName) || players[1].equals(userName)) {
-                    Long matchId = entry.getKey();
-                    // Clean up after retrieving
-                    matchPlayers.remove(matchId);
-                    waitingPlayers.remove(players[0]);
-                    waitingPlayers.remove(players[1]);
-                    System.out.println("Returning match " + matchId + " to " + userName);
-                    return Optional.of(matchId);
+            if (gameType == null) {
+                // If gameType isn't provided, check if user is waiting in any queue
+                for (Map.Entry<GameType, Map<String, Long>> e : waitingByType.entrySet()) {
+                    MatchmakingStatusResponse resp = checkWaiting(e.getKey(), e.getValue(), userName);
+                    if (resp != null) return resp;
                 }
+                return new MatchmakingStatusResponse("TIMEOUT", null, null);
             }
+
+            Map<String, Long> waiting = waitingByType.computeIfAbsent(gameType, gt -> new ConcurrentHashMap<>());
+            MatchmakingStatusResponse resp = checkWaiting(gameType, waiting, userName);
+            if (resp != null) return resp;
         }
 
-        return Optional.empty();
+        return new MatchmakingStatusResponse("TIMEOUT", null, gameType);
     }
 
     // Method to cancel waiting
-    public boolean cancelWaiting(HttpServletRequest request) {
+    public boolean cancelWaiting(HttpServletRequest request, GameType gameType) {
         String tk = getJwtFromCookie(request);
         String userName = jwtService.extractUsername(tk);
 
@@ -153,12 +174,39 @@ public class MatchService {
         }
 
         synchronized(this) {
-            boolean removed = waitingPlayers.remove(userName) != null;
+            boolean removed;
+            if (gameType == null) {
+                removed = removeFromAllQueues(userName);
+            } else {
+                Map<String, Long> waiting = waitingByType.computeIfAbsent(gameType, gt -> new ConcurrentHashMap<>());
+                removed = waiting.remove(userName) != null;
+            }
             if (removed) {
                 System.out.println("User " + userName + " cancelled waiting");
             }
             return removed;
         }
+    }
+
+    private boolean removeFromAllQueues(String userName) {
+        boolean removed = false;
+        for (Map<String, Long> waiting : waitingByType.values()) {
+            removed |= (waiting.remove(userName) != null);
+        }
+        return removed;
+    }
+
+    private MatchmakingStatusResponse checkWaiting(GameType gameType, Map<String, Long> waiting, String userName) {
+        Long enqueuedAt = waiting.get(userName);
+        if (enqueuedAt == null) {
+            return null;
+        }
+        long now = System.currentTimeMillis();
+        if (now - enqueuedAt > WAIT_TIMEOUT_MS) {
+            waiting.remove(userName);
+            return new MatchmakingStatusResponse("TIMEOUT", null, gameType);
+        }
+        return new MatchmakingStatusResponse("WAITING", null, gameType);
     }
 
     private Map<String, Object> createPlayerInfo(User user) {

@@ -14,6 +14,7 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final WebSocketAuthInterceptor webSocketAuthInterceptor;
+    private final JwtHandshakeInterceptor jwtHandshakeInterceptor;
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
@@ -25,11 +26,15 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns("http://localhost:3000")
+                .setAllowedOriginPatterns("http://localhost:*", "http://127.0.0.1:*")
+                .addInterceptors(jwtHandshakeInterceptor)
+                .setHandshakeHandler(new WebSocketPrincipalHandshakeHandler())
                 .withSockJS();
 
         registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns("http://localhost:3000");
+                .setAllowedOriginPatterns("http://localhost:*", "http://127.0.0.1:*")
+                .addInterceptors(jwtHandshakeInterceptor)
+                .setHandshakeHandler(new WebSocketPrincipalHandshakeHandler());
     }
 
     // Add this method to your WebSocketConfig class
