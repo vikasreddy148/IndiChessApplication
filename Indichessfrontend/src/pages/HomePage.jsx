@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import "../styles/home.css";
 
 async function startMatch(gameType) {
   return await apiFetch("/game", {
@@ -104,47 +105,164 @@ export function HomePage() {
   }
 
   return (
-    <div style={{ padding: 24, display: "grid", gap: 16, maxWidth: 720 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h2 style={{ margin: 0 }}>Lobby</h2>
-        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          <span style={{ opacity: 0.9 }}>
-            Logged in as <b>{auth.user?.username}</b>
-          </span>
+    <div className="ic-home">
+      <aside className="ic-home-sidebar">
+        <div className="ic-home-brand">
+          <div className="ic-home-brand-mark" />
+          <div>IndiChess</div>
+        </div>
+
+        <div className="ic-home-nav">
+          <button className="ic-home-navbtn" type="button">
+            <span className="ic-home-dot" /> <span>Play</span>
+          </button>
+          <button className="ic-home-navbtn" type="button">
+            <span className="ic-home-dot" /> <span>Puzzles</span>
+          </button>
+          <button className="ic-home-navbtn" type="button">
+            <span className="ic-home-dot" /> <span>Learn</span>
+          </button>
+          <button className="ic-home-navbtn" type="button">
+            <span className="ic-home-dot" /> <span>Watch</span>
+          </button>
+          <button className="ic-home-navbtn" type="button">
+            <span className="ic-home-dot" /> <span>News</span>
+          </button>
+        </div>
+
+        <div className="ic-home-sidecard">
+          <div className="ic-home-search">
+            <input className="ic-home-input" placeholder="Search" />
+            <button className="ic-home-btn" type="button">
+              Go
+            </button>
+          </div>
+        </div>
+
+        <div className="ic-home-sidecard">
+          <div style={{ opacity: 0.9 }}>
+            Signed in as <b>{auth.user?.username}</b>
+          </div>
           <button
+            className="ic-home-btn"
             onClick={async () => {
               await onCancel();
               await auth.logout();
+              nav("/login");
             }}
+            type="button"
           >
             Logout
           </button>
         </div>
-      </div>
+      </aside>
 
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <button onClick={() => begin("STANDARD")} disabled={status === "waiting"} style={{ padding: 10 }}>
-          Start Standard (no clock)
-        </button>
-        <button onClick={() => begin("RAPID")} disabled={status === "waiting"} style={{ padding: 10 }}>
-          Start Rapid (10 min)
-        </button>
-        <button onClick={() => begin("BLITZ")} disabled={status === "waiting"} style={{ padding: 10 }}>
-          Start Blitz (3+1)
-        </button>
-      </div>
+      <main className="ic-home-main">
+        <div className="ic-home-mainwrap">
+          <div className="ic-home-profile">
+            <div className="ic-home-avatar" />
+            <div>
+              <div className="ic-home-username">{auth.user?.username}</div>
+              <div style={{ fontSize: 12, opacity: 0.7 }}>Ready to play</div>
+            </div>
+          </div>
 
-      {status === "waiting" ? (
-        <div>
-          Waiting for opponent ({activeType})…{" "}
-          <button onClick={onCancel} style={{ marginLeft: 8 }}>
-            Cancel
-          </button>
+          <div className="ic-home-cards">
+            <button
+              className="ic-card"
+              disabled={status === "waiting"}
+              onClick={() => begin("RAPID")}
+              type="button"
+            >
+              <div className="ic-card-left">
+                <div className="ic-card-icon">10</div>
+                <div>
+                  <div className="ic-card-title">Play 10 min</div>
+                  <div className="ic-card-sub">Rapid matchmaking</div>
+                </div>
+              </div>
+              <span style={{ opacity: 0.7 }}>→</span>
+            </button>
+
+            <button
+              className="ic-card"
+              disabled={status === "waiting"}
+              onClick={() => begin("STANDARD")}
+              type="button"
+            >
+              <div className="ic-card-left">
+                <div className="ic-card-icon">∞</div>
+                <div>
+                  <div className="ic-card-title">New Game</div>
+                  <div className="ic-card-sub">Standard (no clock)</div>
+                </div>
+              </div>
+              <span style={{ opacity: 0.7 }}>→</span>
+            </button>
+
+            <button
+              className="ic-card"
+              disabled={status === "waiting"}
+              onClick={() => begin("BLITZ")}
+              type="button"
+            >
+              <div className="ic-card-left">
+                <div className="ic-card-icon">3</div>
+                <div>
+                  <div className="ic-card-title">Play Blitz</div>
+                  <div className="ic-card-sub">3+1 matchmaking</div>
+                </div>
+              </div>
+              <span style={{ opacity: 0.7 }}>→</span>
+            </button>
+
+            <button
+              className="ic-card"
+              disabled
+              type="button"
+              title="Coming soon"
+            >
+              <div className="ic-card-left">
+                <div className="ic-card-icon">🤝</div>
+                <div>
+                  <div className="ic-card-title">Play a Friend</div>
+                  <div className="ic-card-sub">Invite link (coming soon)</div>
+                </div>
+              </div>
+              <span style={{ opacity: 0.4 }}>→</span>
+            </button>
+          </div>
+
+          {status === "waiting" ? (
+            <div className="ic-home-status">
+              <div>
+                Waiting for opponent (<b>{activeType}</b>)…
+              </div>
+              <button className="ic-home-btn ic-home-btn-primary" onClick={onCancel} type="button">
+                Cancel
+              </button>
+            </div>
+          ) : null}
+
+          {status === "timeout" ? (
+            <div className="ic-home-status">
+              <div>No opponent found (timeout). Try again.</div>
+              <button className="ic-home-btn" onClick={() => setStatus("idle")} type="button">
+                OK
+              </button>
+            </div>
+          ) : null}
+
+          {status === "error" ? (
+            <div className="ic-home-status">
+              <div style={{ color: "#ffb3b3" }}>{error}</div>
+              <button className="ic-home-btn" onClick={() => setStatus("idle")} type="button">
+                OK
+              </button>
+            </div>
+          ) : null}
         </div>
-      ) : null}
-
-      {status === "timeout" ? <div>No opponent found (timeout). Try again.</div> : null}
-      {status === "error" ? <div style={{ color: "#ff9a9a" }}>{error}</div> : null}
+      </main>
     </div>
   );
 }

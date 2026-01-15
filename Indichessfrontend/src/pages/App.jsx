@@ -3,6 +3,8 @@ import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "../auth/AuthContext";
 import { HomePage } from "./HomePage";
 import { GamePage } from "./GamePage";
+import { LandingPage } from "./LandingPage";
+import "../styles/auth.css";
 
 function RequireAuth({ children }) {
   const auth = useAuth();
@@ -48,38 +50,61 @@ function LoginPage() {
   }
 
   return (
-    <div style={{ padding: 24 }}>
-      <h2>Login</h2>
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 12, maxWidth: 360 }}>
-        <label>
-          Username
-          <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            style={{ width: "100%", padding: 8, marginTop: 6 }}
-            autoComplete="username"
-          />
-        </label>
-        <label>
-          Password
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={{ width: "100%", padding: 8, marginTop: 6 }}
-            autoComplete="current-password"
-          />
-        </label>
-        {err ? <div style={{ color: "#ff9a9a" }}>{err}</div> : null}
-        <button disabled={submitting} style={{ padding: 10 }}>
-          {submitting ? "Logging in…" : "Login"}
-        </button>
-      </form>
-      <div style={{ marginTop: 12 }}>
-        No account? <Link to="/signup">Create one</Link>
-      </div>
-      <div style={{ marginTop: 16, display: "flex", gap: 12 }}>
-        <a href="http://localhost:8080/oauth2/authorization/google">Continue with Google</a>
+    <div className="ic-auth">
+      <div className="ic-auth-card">
+        <div className="ic-auth-header">
+          <div className="ic-auth-brand">
+            <div className="ic-auth-mark" />
+            <h2 className="ic-auth-title">Welcome back</h2>
+          </div>
+          <Link className="ic-link" to="/">
+            Home
+          </Link>
+        </div>
+        <p className="ic-auth-subtitle">Login to start matchmaking and continue your games.</p>
+
+        <form onSubmit={onSubmit} className="ic-form">
+          <div className="ic-field">
+            <div className="ic-label">Username</div>
+            <input
+              className="ic-input"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
+              placeholder="Your username"
+            />
+          </div>
+          <div className="ic-field">
+            <div className="ic-label">Password</div>
+            <input
+              className="ic-input"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              placeholder="••••••••"
+            />
+          </div>
+
+          {err ? <div className="ic-error">{err}</div> : null}
+
+          <button disabled={submitting} className="ic-btn ic-btn-primary" type="submit">
+            {submitting ? "Logging in…" : "Login"}
+          </button>
+
+          <div className="ic-divider">or</div>
+
+          <a className="ic-btn ic-btn-secondary" href="http://localhost:8080/oauth2/authorization/google">
+            Continue with Google
+          </a>
+        </form>
+
+        <div className="ic-auth-footer">
+          No account?{" "}
+          <Link className="ic-link" to="/signup">
+            Create one
+          </Link>
+        </div>
       </div>
     </div>
   );
@@ -107,44 +132,65 @@ function SignupPage() {
   }
 
   return (
-    <div style={{ padding: 24 }}>
-      <h2>Signup</h2>
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 12, maxWidth: 360 }}>
-        <label>
-          Username
-          <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            style={{ width: "100%", padding: 8, marginTop: 6 }}
-            autoComplete="username"
-          />
-        </label>
-        <label>
-          Email
-          <input
-            value={emailId}
-            onChange={(e) => setEmailId(e.target.value)}
-            style={{ width: "100%", padding: 8, marginTop: 6 }}
-            autoComplete="email"
-          />
-        </label>
-        <label>
-          Password
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={{ width: "100%", padding: 8, marginTop: 6 }}
-            autoComplete="new-password"
-          />
-        </label>
-        {err ? <div style={{ color: "#ff9a9a" }}>{err}</div> : null}
-        <button disabled={submitting} style={{ padding: 10 }}>
-          {submitting ? "Creating…" : "Create account"}
-        </button>
-      </form>
-      <div style={{ marginTop: 12 }}>
-        Already have an account? <Link to="/login">Login</Link>
+    <div className="ic-auth">
+      <div className="ic-auth-card">
+        <div className="ic-auth-header">
+          <div className="ic-auth-brand">
+            <div className="ic-auth-mark" />
+            <h2 className="ic-auth-title">Create your account</h2>
+          </div>
+          <Link className="ic-link" to="/">
+            Home
+          </Link>
+        </div>
+        <p className="ic-auth-subtitle">Sign up to play Standard, Rapid, and Blitz matches.</p>
+
+        <form onSubmit={onSubmit} className="ic-form">
+          <div className="ic-field">
+            <div className="ic-label">Username</div>
+            <input
+              className="ic-input"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
+              placeholder="Pick a username"
+            />
+          </div>
+          <div className="ic-field">
+            <div className="ic-label">Email</div>
+            <input
+              className="ic-input"
+              value={emailId}
+              onChange={(e) => setEmailId(e.target.value)}
+              autoComplete="email"
+              placeholder="you@example.com"
+            />
+          </div>
+          <div className="ic-field">
+            <div className="ic-label">Password</div>
+            <input
+              className="ic-input"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
+              placeholder="Minimum 6 characters"
+            />
+          </div>
+
+          {err ? <div className="ic-error">{err}</div> : null}
+
+          <button disabled={submitting} className="ic-btn ic-btn-primary" type="submit">
+            {submitting ? "Creating…" : "Create account"}
+          </button>
+        </form>
+
+        <div className="ic-auth-footer">
+          Already have an account?{" "}
+          <Link className="ic-link" to="/login">
+            Login
+          </Link>
+        </div>
       </div>
     </div>
   );
@@ -164,7 +210,14 @@ export function App() {
   return (
     <AuthProvider>
       <Routes>
-        <Route path="/" element={<Navigate to="/home" replace />} />
+        <Route
+          path="/"
+          element={
+            <RedirectIfAuthed>
+              <LandingPage />
+            </RedirectIfAuthed>
+          }
+        />
         <Route
           path="/login"
           element={

@@ -1,0 +1,175 @@
+.ic-auth {
+  min-height: 100vh;
+  background: radial-gradient(1200px 600px at 20% 10%, rgba(96, 165, 250, 0.18), transparent 55%),
+    radial-gradient(900px 500px at 85% 30%, rgba(34, 197, 94, 0.16), transparent 55%),
+    #0b1020;
+  color: #e8ebf5;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.ic-auth-card {
+  width: min(460px, 100%);
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03));
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+  padding: 22px;
+}
+
+.ic-auth-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.ic-auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ic-auth-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #4ade80, #60a5fa);
+  box-shadow: 0 10px 30px rgba(34, 197, 94, 0.18);
+}
+
+.ic-auth-title {
+  margin: 0;
+  font-size: 24px;
+  letter-spacing: -0.2px;
+}
+
+.ic-auth-subtitle {
+  margin: 0 0 16px 0;
+  color: rgba(232, 235, 245, 0.75);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.ic-form {
+  display: grid;
+  gap: 12px;
+}
+
+.ic-field {
+  display: grid;
+  gap: 6px;
+}
+
+.ic-label {
+  font-size: 13px;
+  color: rgba(232, 235, 245, 0.85);
+}
+
+.ic-input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #e8ebf5;
+  border-radius: 14px;
+  padding: 12px 12px;
+  outline: none;
+}
+
+.ic-input:focus {
+  border-color: rgba(96, 165, 250, 0.6);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
+}
+
+.ic-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.ic-btn {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  border-radius: 14px;
+  padding: 12px 14px;
+  text-decoration: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-weight: 800;
+  color: #e8ebf5;
+}
+
+.ic-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ic-btn-primary {
+  background: linear-gradient(180deg, rgba(74, 222, 128, 0.95), rgba(34, 197, 94, 0.95));
+  color: #0b1020;
+  box-shadow: 0 18px 40px rgba(34, 197, 94, 0.2);
+}
+
+.ic-btn-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.ic-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.ic-btn-ghost {
+  background: rgba(0, 0, 0, 0.18);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.ic-error {
+  border: 1px solid rgba(255, 0, 0, 0.18);
+  background: rgba(255, 0, 0, 0.08);
+  padding: 10px 12px;
+  border-radius: 14px;
+  color: #ffb3b3;
+  font-size: 13px;
+}
+
+.ic-divider {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+  color: rgba(232, 235, 245, 0.65);
+  font-size: 12px;
+}
+
+.ic-divider::before,
+.ic-divider::after {
+  content: "";
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.ic-auth-footer {
+  margin-top: 12px;
+  font-size: 13px;
+  color: rgba(232, 235, 245, 0.75);
+}
+
+.ic-link {
+  color: #9cc7ff;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.ic-link:hover {
+  text-decoration: underline;
+}
+
+
