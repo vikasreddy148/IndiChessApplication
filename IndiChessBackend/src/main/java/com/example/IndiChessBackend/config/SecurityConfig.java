@@ -82,7 +82,8 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/login", "/signup", "/logout", "/oauth2/**", "/login/oauth2/**").permitAll()
+                        // Public endpoints (SPA auth-check must be public to avoid noisy 401 network errors)
+                        .requestMatchers("/login", "/signup", "/logout", "/api/auth/me", "/oauth2/**", "/login/oauth2/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 // OAuth2 login needs a session (for state); JWT APIs still work fine with IF_REQUIRED.

@@ -18,14 +18,16 @@ function HomeCard() {
           credentials: "include",
         });
 
-        if (response.ok) {
-          // If authenticated, redirect to /home
+        // 200 => authenticated, 401 => not logged in (normal on login page)
+        const data = await response.json().catch(() => null);
+        if (response.ok && data?.authenticated) {
           setIsAuthenticated(true);
-          navigate("/home");  // Redirect to /home using useNavigate
+          navigate("/home");
         } else {
           setIsAuthenticated(false);
         }
       } catch (error) {
+        // Network error only (don't spam console for expected unauthenticated state)
         console.error("Error checking authentication:", error);
         setIsAuthenticated(false);
       }

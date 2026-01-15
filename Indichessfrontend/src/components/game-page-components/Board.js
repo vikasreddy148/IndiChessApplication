@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import "../component-styles/Board.css";  // Importing CSS file
 import PromotionModal from "../game-page-components/PromotionModal"
+import { legalMovesForSquare, makeMove, isInCheck, getGameOutcome } from "../../chess/engine";
 
 // MODIFICATION 1: Update props to include WebSocket functionality
 const Board = ({ 
@@ -33,28 +34,17 @@ const Board = ({
     playerColor === 'white' ? isMyTurn : !isMyTurn
   );
 
-  // piece, prow, pcol, arow, acol
-  const [allMoves, setAllMoves] = useState([]);
-
-  const [blackKingCoordinates, setBlackKingCoordinates] = useState([0,4]);
-  const [whiteKingCoordinates, setWhiteKingCoordinates] = useState([7,4]);
   const boardRef = useRef(null);
-  const [prevMove, setPrevMove] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [promotingPawn, setPromotingPawn] = useState(null); 
-  // isKingInCheckHook[0] --> white king's check state
-  // isKingInCheckHook[1] --> black king's check state
-  const [isKingInCheckHook, setIsKingInCheckHook] = useState([false, false]);
-  // castling hooks
-  // kingsMoved[0] --> signifies white's king movement
-  // kingsMoved[1] --> signifies black's king movement
-  const [kingsMoved, setKingsMoved] = useState([false,false]);
+  // Legacy check/castling state is no longer used for rules correctness.
+  // The engine tracks castling + check legality; we keep only the engine state.
 
-  // rooksMoved[0] --> signifies white's king side rook's movement
-  // rooksMoved[1] --> signifies white's Queen side rook's movement
-  // rooksMoved[2] --> signifies black's king side rook's movement
-  // rooksMoved[3] --> signifies black's queen side rook's movement
-  const [rooksMoved, setRooksMoved] = useState([false,false,false,false]);
+  // Engine state for full rules correctness
+  const [castling, setCastling] = useState({ K: true, Q: true, k: true, q: true });
+  const [enPassant, setEnPassant] = useState(null); // {row,col} or null
+  const [halfmoveClock, setHalfmoveClock] = useState(0);
+  const [fullmoveNumber, setFullmoveNumber] = useState(1);
 
   // MODIFICATION 3: Add state for opponent's move
   const lastOpponentMoveRef = useRef(null);
@@ -97,61 +87,40 @@ const Board = ({
     }
   }, [isMyTurn, playerColor]);
 
-  // Recompute all legal-ish moves for the side to move whenever board/turn changes
-  useEffect(() => {
-    const computedMoves = [];
-
-    for (let i = 0; i < 8; i++) {
-      for (let j = 0; j < 8; j++) {
-        const piece = board[i][j];
-        if (
-          piece &&
-          ((isUpperCase(piece) && isWhiteTurn) || (!isUpperCase(piece) && !isWhiteTurn))
-        ) {
-          const newMoves = getValidMoves(piece, i, j);
-          computedMoves.push(...newMoves);
-        }
-      }
-    }
-
-    setAllMoves(computedMoves);
-    // getValidMoves is intentionally omitted from deps: it's defined inline in this component and
-    // already derives entirely from `board` / `isWhiteTurn` (which we *do* depend on).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isWhiteTurn, board]);
+  // Legal move generation happens on-demand via the engine (see handleSquareClick/handleDragStart/handleDrop).
 
   // MODIFICATION 5: Handle opponent's move from WebSocket
   // Update the validation in useEffect or applyOpponentMove:
-  useEffect(() => {
+useEffect(() => {
     if (!opponentMove) return;
     if (opponentMove === lastOpponentMoveRef.current) return;
 
-    console.log("📥 New opponent move received:", opponentMove);
-
-    // Accept BOTH structures:
-    // 1. Nested: opponentMove.from && opponentMove.to
-    // 2. Flat: opponentMove.fromRow !== undefined && opponentMove.fromCol !== undefined
-    const hasNestedStructure = opponentMove.from && opponentMove.to;
+        console.log("📥 New opponent move received:", opponentMove);
+        
+        // Accept BOTH structures:
+        // 1. Nested: opponentMove.from && opponentMove.to
+        // 2. Flat: opponentMove.fromRow !== undefined && opponentMove.fromCol !== undefined
+        const hasNestedStructure = opponentMove.from && opponentMove.to;
     const hasFlatStructure =
       opponentMove.fromRow !== undefined &&
       opponentMove.fromCol !== undefined &&
       opponentMove.toRow !== undefined &&
       opponentMove.toCol !== undefined;
-
-    if (!hasNestedStructure && !hasFlatStructure) {
-      console.error("❌ Invalid opponent move structure:", opponentMove);
-      return;
-    }
-
-    // Check if this is actually opponent's move (not our own echo)
-    if (opponentMove.playerColor === playerColor) {
-      console.log("👤 Ignoring own move (echo)");
+        
+        if (!hasNestedStructure && !hasFlatStructure) {
+            console.error("❌ Invalid opponent move structure:", opponentMove);
+            return;
+        }
+        
+        // Check if this is actually opponent's move (not our own echo)
+        if (opponentMove.playerColor === playerColor) {
+            console.log("👤 Ignoring own move (echo)");
       lastOpponentMoveRef.current = opponentMove;
-      return;
-    }
-
-    console.log(`👤 Processing opponent's (${opponentMove.playerColor}) move`);
-    applyOpponentMove(opponentMove);
+            return;
+        }
+        
+        console.log(`👤 Processing opponent's (${opponentMove.playerColor}) move`);
+        applyOpponentMove(opponentMove);
     lastOpponentMoveRef.current = opponentMove;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opponentMove, playerColor]);
@@ -176,7 +145,7 @@ const applyOpponentMove = (moveData) => {
         from = moveData.from;
         to = moveData.to;
         console.log("📋 Using nested object structure");
-    } else if (moveData.fromRow !== undefined && moveData.fromCol !== undefined &&
+    } else if (moveData.fromRow !== undefined && moveData.fromCol !== undefined && 
                moveData.toRow !== undefined && moveData.toCol !== undefined) {
         // Structure 1: Flat fields
         from = { row: moveData.fromRow, col: moveData.fromCol };
@@ -225,11 +194,7 @@ const applyOpponentMove = (moveData) => {
         // Update king coordinates based on new board
         for (let row = 0; row < 8; row++) {
             for (let col = 0; col < 8; col++) {
-                if (newBoardFromData[row][col] === 'K') {
-                    setWhiteKingCoordinates([row, col]);
-                } else if (newBoardFromData[row][col] === 'k') {
-                    setBlackKingCoordinates([row, col]);
-                }
+                // UI king coordinates are derived from board; no separate tracking needed.
             }
         }
         
@@ -284,32 +249,10 @@ const applyOpponentMove = (moveData) => {
         setBoard(newBoard);
         boardAfter = newBoard;
         
-        // Update king coordinates
-        if (piece === 'K') {
-            setWhiteKingCoordinates([toRow, toCol]);
-        } else if (piece === 'k') {
-            setBlackKingCoordinates([toRow, toCol]);
-        }
+        // UI king coordinates are derived from board; no separate tracking needed.
         
-        // Update castling rights
-        if (piece === 'K') {
-            setKingsMoved([true, kingsMoved[1]]);
-        } else if (piece === 'k') {
-            setKingsMoved([kingsMoved[0], true]);
-        }
-        
-        // Update rooks moved
-        if (piece === 'R') {
-            if (fromRow === 7) {
-                if (fromCol === 0) setRooksMoved([rooksMoved[0], true, rooksMoved[2], rooksMoved[3]]);
-                else if (fromCol === 7) setRooksMoved([true, rooksMoved[1], rooksMoved[2], rooksMoved[3]]);
-            }
-        } else if (piece === 'r') {
-            if (fromRow === 0) {
-                if (fromCol === 0) setRooksMoved([rooksMoved[0], rooksMoved[1], rooksMoved[2], true]);
-                else if (fromCol === 7) setRooksMoved([rooksMoved[0], rooksMoved[1], true, rooksMoved[3]]);
-            }
-        }
+    // Note: castling rights / rook movement are tracked by the engine state when playing locally.
+    // Opponent-move application is legacy and is being kept only for backward compatibility.
     }
     
     // Update move history locally
@@ -405,334 +348,7 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled) => {
     return str === str.toUpperCase();
   }
 
-  const canCastleGeneral = () => {
-    if ( (isWhiteTurn && isKingInCheckHook[0]) || (!isWhiteTurn && isKingInCheckHook[1])
-       ||
-      (isWhiteTurn && kingsMoved[0]) || (!isWhiteTurn && kingsMoved[1]) ) return false;  
-    return true;
-  };
-
-  const canCastleLong = () => {
-        let ind = -1;
-        if(isWhiteTurn) ind = 1;
-        else if(!isWhiteTurn) ind = 3;
-
-        if (isWhiteTurn) {
-          if ( rooksMoved[ind] ) return false; 
-        } else {
-          if ( rooksMoved[ind] ) return false; 
-        }
-        return true;
-  }
-
-  const canCastleShort = () => {
-        let ind = -1;
-        if(isWhiteTurn) ind = 0;
-        else if(!isWhiteTurn) ind = 2;
-
-        if (isWhiteTurn) {
-          if ( rooksMoved[ind] ) return false; 
-        } else {
-          if ( rooksMoved[ind] ) return false; 
-        }
-        return true;
-  }
-
-  const isSquareUnderAttack = (row, col) => {
-    for (let i = 0; i < allMoves.length; i++) {
-      const [, , , arow, acol] = allMoves[i];
-      if (arow === row && acol === col) {
-        return true;
-      }
-    }
-    return false;
-  };
-
-  const getValidMoves = (piece, row, col) => {
-    // ... (YOUR EXISTING getValidMoves FUNCTION - KEEP EXACTLY AS IS)
-    const moves = [];
-    // if king is in check only king moves or capture is available
-    switch (piece.toLowerCase()) {
-      case "p":
-        // ... (your existing pawn logic)
-        const direction = piece === "p" ? 1 : -1;
-        if (board[row + direction]) {
-          if (board[row + direction][col] === "")
-          moves.push([piece, row, col, row + direction, col]);
-          if(col-1>=0){
-            if (piece === "p" && board[row + direction][col - 1] !== "" && isUpperCase(board[row + direction][col - 1])) {
-              moves.push([piece, row, col,row + direction, col-1]);
-            }
-            else if (piece === "P" && board[row + direction][col - 1] !== "" && !isUpperCase(board[row + direction][col - 1])) {
-              moves.push([piece, row, col,row + direction, col-1]);
-            }
-          }
-          if(col+1<8){
-            if (piece === "p" && board[row + direction][col + 1] !== "" && isUpperCase(board[row + direction][col + 1])) {
-              moves.push([piece, row, col,row + direction, col+1]);
-            }
-            else if (piece === "P" && board[row + direction][col + 1] !== "" && !isUpperCase(board[row + direction][col + 1])) {
-              moves.push([piece, row, col,row + direction, col+1]);
-            }
-          }
-        }
-          if((row === 1 && piece === "p" &&  board[row+2*direction][col] === "" && board[row+direction][col] === "")
-          || (row === 6 && piece === "P" &&  board[row+2*direction][col] === "" && board[row+direction][col] === ""))
-          moves.push([piece, row, col,row + 2*direction, col]);
-          
-          if((row === 3 && piece === "P" && prevMove && prevMove.piece === "p" && 
-            Math.abs(prevMove.sqnumfrom-prevMove.sqnumto) === 2 && Math.abs(col-prevMove.tc)===1)
-          ||
-            (row === 4 && piece === "p" && prevMove && prevMove.piece === "P" && 
-            Math.abs(prevMove.sqnumfrom-prevMove.sqnumto) === 2 && Math.abs(col-prevMove.tc)===1)
-          )
-          moves.push([piece, row, col,row + direction, prevMove.tc]);
-
-        break;
-
-      case "r":
-        // ... (your existing rook logic)
-        let forwardMotion = true, backwardMotion = true, leftMotion = true, rightMotion = true;
-        for (let i = 1; i < 8; i++) {
-          if (forwardMotion && row + i < 8 && board[row + i][col] === "") moves.push([piece, row, col,row + i, col]);
-          else if(forwardMotion && row + i < 8 && board[row + i][col] !== ""){
-            let rook = board[row][col];
-            let attackPoint = board[row+i][col];
-            if( (isUpperCase(rook) && !isUpperCase(attackPoint)) ||
-                (!isUpperCase(rook) && isUpperCase(attackPoint)))
-                  moves.push([piece, row, col,row + i, col]);
-            forwardMotion = false;
-          }
-          if (backwardMotion && row - i >= 0 && board[row - i][col] === "") moves.push([piece, row, col,row - i, col]);
-          else if(backwardMotion && row - i >= 0 && board[row - i][col] !== ""){
-            let rook = board[row][col];
-            let attackPoint = board[row-i][col];
-            if( (isUpperCase(rook) && !isUpperCase(attackPoint)) ||
-                (!isUpperCase(rook) && isUpperCase(attackPoint)))
-                  moves.push([piece, row, col,row - i, col]);
-            backwardMotion = false;
-          }
-          if (rightMotion && col + i < 8 && board[row][col + i] === "") moves.push([piece, row, col,row, col + i]);
-          else if(rightMotion && col + i < 8 && board[row][col+i] !== ""){
-            let rook = board[row][col];
-            let attackPoint = board[row][col+i];
-            if( (isUpperCase(rook) && !isUpperCase(attackPoint)) ||
-                (!isUpperCase(rook) && isUpperCase(attackPoint)))
-                  moves.push([piece, row, col,row, col+i]);
-            rightMotion = false;
-          }
-          if (leftMotion && col - i >= 0 && board[row][col - i] === "") moves.push([piece, row, col,row, col - i]);
-          else if(leftMotion && col - i >= 0 && board[row][col-i] !== ""){
-            let rook = board[row][col];
-            let attackPoint = board[row][col-i];
-            if( (isUpperCase(rook) && !isUpperCase(attackPoint)) ||
-                (!isUpperCase(rook) && isUpperCase(attackPoint)))
-                  moves.push([piece, row, col,row, col-i]);
-            leftMotion = false;
-          }
-          if(!forwardMotion && !backwardMotion && !leftMotion && !rightMotion) break;
-        }
-        break;
-
-      case "n":
-        // ... (your existing knight logic)
-        const knightMoves = [
-          [-2, -1], [-2, 1], [2, -1], [2, 1],
-          [-1, -2], [1, -2], [-1, 2], [1, 2]
-        ];
-        knightMoves.forEach(([r, c]) => {
-          if (row + r >= 0 && row + r < 8 && col + c >= 0 && col + c < 8) {
-            let knight = board[row][col];
-            let attackPoint = board[row+r][col+c];
-            if(attackPoint === "" || 
-              (isUpperCase(knight) && !isUpperCase(attackPoint)) ||
-              (!isUpperCase(knight) && isUpperCase(attackPoint)))
-            moves.push([piece, row, col,row + r, col + c]);
-          }
-        });
-        break;
-
-      case "k":
-        // ... (your existing king logic)
-        const kingMoves = [
-          [-1, -1], [-1, 0], [-1, 1],
-          [0, -1], [0, 1],
-          [1, -1], [1, 0], [1, 1]
-        ];
-        kingMoves.forEach(([r, c]) => {
-          if (row + r >= 0 && row + r < 8 && col + c >= 0 && col + c < 8) {
-            let king = board[row][col];
-            let attackPoint = board[row+r][col+c];
-            if(attackPoint === "" || 
-              (isUpperCase(king) && !isUpperCase(attackPoint)) ||
-              (!isUpperCase(king) && isUpperCase(attackPoint)))
-            if(!isSquareUnderAttack(row+r, col+c))
-            moves.push([piece, row, col,row + r, col + c]);
-          }
-        });
-        if (canCastleGeneral()) {
-          if(canCastleShort() && board[row][5] === "" && board[row][6] === "" 
-            && !isSquareUnderAttack(row, 5) && !isSquareUnderAttack(row, 6)
-          )
-            moves.push([piece, row, col,row, 6]);
-          if(canCastleLong() && board[row][3] === "" && board[row][2] === "" && board[row][1] === "" 
-            && !isSquareUnderAttack(row, 3) && !isSquareUnderAttack(row, 2)
-            ){
-            moves.push([piece, row, col,row, 2]);
-          }
-        }
-        break;
-
-      case "b":
-        // ... (your existing bishop logic)
-        let tleftdiag = true, trightdiag = true, 
-        bleftdiag = true, brightdiag = true;
-
-        for (let i = 1; i < 8; i++) {
-          if (tleftdiag && row - i >= 0 && col - i >= 0 && board[row - i][col - i] === "") moves.push([piece, row, col,row - i, col - i]);
-          else if(tleftdiag && row - i >= 0 && col - i >= 0 && board[row - i][col - i] !== ""){
-            let bishop = board[row][col];
-            let attackPoint = board[row-i][col-i];
-            if( (isUpperCase(bishop) && !isUpperCase(attackPoint)) ||
-                (!isUpperCase(bishop) && isUpperCase(attackPoint)))
-                  moves.push([piece, row, col,row - i, col - i]);
-            tleftdiag = false;
-          }
-          if (trightdiag && row - i >= 0 && col + i < 8 && board[row - i][col + i] === "") moves.push([piece, row, col,row - i, col + i]);
-          else if(trightdiag && row - i >= 0 && col + i < 8 && board[row - i][col + i] !== ""){
-            let bishop = board[row][col];
-            let attackPoint = board[row-i][col+i];
-            if( (isUpperCase(bishop) && !isUpperCase(attackPoint)) ||
-                (!isUpperCase(bishop) && isUpperCase(attackPoint)))
-                  moves.push([piece, row, col,row - i, col + i]);
-            trightdiag = false;
-          }
-          if (bleftdiag && row + i < 8 && col - i >= 0 && board[row + i][col - i] === "") moves.push([piece, row, col,row + i, col - i]);
-          else if(bleftdiag && row + i < 8 && col - i >= 0 && board[row + i][col - i] !== ""){
-            let bishop = board[row][col];
-            let attackPoint = board[row+i][col-i];
-            if( (isUpperCase(bishop) && !isUpperCase(attackPoint)) ||
-                (!isUpperCase(bishop) && isUpperCase(attackPoint)))
-                  moves.push([piece, row, col,row + i, col - i]);
-            bleftdiag = false;
-          }
-          if (brightdiag && row + i < 8 && col + i < 8 && board[row + i][col + i] === "") moves.push([piece, row, col,row + i, col + i]);
-          else if(brightdiag && row + i < 8 && col + i < 8 && board[row + i][col + i] !== ""){
-            let bishop = board[row][col];
-            let attackPoint = board[row+i][col+i];
-            if( (isUpperCase(bishop) && !isUpperCase(attackPoint)) ||
-                (!isUpperCase(bishop) && isUpperCase(attackPoint)))
-                  moves.push([piece, row, col,row + i, col + i]);
-            brightdiag = false;
-          }
-        }
-        break;
-
-      case "q":
-        // ... (your existing queen logic)
-        let qforwardMotion = true, qbackwardMotion = true, qleftMotion = true, qrightMotion = true;
-        for (let i = 1; i < 8; i++) {
-          if (qforwardMotion && row + i < 8 && board[row + i][col] === "") moves.push([piece, row, col,row + i, col]);
-          else if(qforwardMotion && row + i < 8 && board[row + i][col] !== ""){
-            let rook = board[row][col];
-            let attackPoint = board[row+i][col];
-            if( (isUpperCase(rook) && !isUpperCase(attackPoint)) ||
-                (!isUpperCase(rook) && isUpperCase(attackPoint)))
-                  moves.push([piece, row, col,row + i, col]);
-            qforwardMotion = false;
-          }
-          if (qbackwardMotion && row - i >= 0 && board[row - i][col] === "") moves.push([piece, row, col,row - i, col]);
-          else if(qbackwardMotion && row - i >= 0 && board[row - i][col] !== ""){
-            let rook = board[row][col];
-            let attackPoint = board[row-i][col];
-            if( (isUpperCase(rook) && !isUpperCase(attackPoint)) ||
-                (!isUpperCase(rook) && isUpperCase(attackPoint)))
-                  moves.push([piece, row, col,row - i, col]);
-            qbackwardMotion = false;
-          }
-          if (qrightMotion && col + i < 8 && board[row][col + i] === "") moves.push([piece, row, col,row, col + i]);
-          else if(qrightMotion && col + i < 8 && board[row][col+i] !== ""){
-            let rook = board[row][col];
-            let attackPoint = board[row][col+i];
-            if( (isUpperCase(rook) && !isUpperCase(attackPoint)) ||
-                (!isUpperCase(rook) && isUpperCase(attackPoint)))
-                  moves.push([piece, row, col,row, col+i]);
-            qrightMotion = false;
-          }
-          if (qleftMotion && col - i >= 0 && board[row][col - i] === "") moves.push([piece, row, col,row, col - i]);
-          else if(qleftMotion && col - i >= 0 && board[row][col-i] !== ""){
-            let rook = board[row][col];
-            let attackPoint = board[row][col-i];
-            if( (isUpperCase(rook) && !isUpperCase(attackPoint)) ||
-                (!isUpperCase(rook) && isUpperCase(attackPoint)))
-                  moves.push([piece, row, col,row, col-i]);
-            qleftMotion = false;
-          }
-          if(!qforwardMotion && !qbackwardMotion && !qleftMotion && !qrightMotion) break;
-        }
-        let qtleftdiag = true, qtrightdiag = true, 
-        qbleftdiag = true, qbrightdiag = true;
-
-        for (let i = 1; i < 8; i++) {
-          if (qtleftdiag && row - i >= 0 && col - i >= 0 && board[row - i][col - i] === "") moves.push([piece, row, col,row - i, col - i]);
-          else if(qtleftdiag && row - i >= 0 && col - i >= 0 && board[row - i][col - i] !== ""){
-            let bishop = board[row][col];
-            let attackPoint = board[row-i][col-i];
-            if( (isUpperCase(bishop) && !isUpperCase(attackPoint)) ||
-                (!isUpperCase(bishop) && isUpperCase(attackPoint)))
-                  moves.push([piece, row, col,row - i, col - i]);
-            qtleftdiag = false;
-          }
-          if (qtrightdiag && row - i >= 0 && col + i < 8 && board[row - i][col + i] === "") moves.push([piece, row, col,row - i, col + i]);
-          else if(qtrightdiag && row - i >= 0 && col + i < 8 && board[row - i][col + i] !== ""){
-            let bishop = board[row][col];
-            let attackPoint = board[row-i][col+i];
-            if( (isUpperCase(bishop) && !isUpperCase(attackPoint)) ||
-                (!isUpperCase(bishop) && isUpperCase(attackPoint)))
-                  moves.push([piece, row, col,row - i, col + i]);
-            qtrightdiag = false;
-          }
-          if (qbleftdiag && row + i < 8 && col - i >= 0 && board[row + i][col - i] === "") moves.push([piece, row, col,row + i, col - i]);
-          else if(qbleftdiag && row + i < 8 && col - i >= 0 && board[row + i][col - i] !== ""){
-            let bishop = board[row][col];
-            let attackPoint = board[row+i][col-i];
-            if( (isUpperCase(bishop) && !isUpperCase(attackPoint)) ||
-                (!isUpperCase(bishop) && isUpperCase(attackPoint)))
-                  moves.push([piece, row, col,row + i, col - i]);
-            qbleftdiag = false;
-          }
-          if (qbrightdiag && row + i < 8 && col + i < 8 && board[row + i][col + i] === "") moves.push([piece, row, col,row + i, col + i]);
-          else if(qbrightdiag && row + i < 8 && col + i < 8 && board[row + i][col + i] !== ""){
-            let bishop = board[row][col];
-            let attackPoint = board[row+i][col+i];
-            if( (isUpperCase(bishop) && !isUpperCase(attackPoint)) ||
-                (!isUpperCase(bishop) && isUpperCase(attackPoint)))
-                  moves.push([piece, row, col,row + i, col + i]);
-            qbrightdiag = false;
-          }
-        }
-        break;
-
-      default:
-        break;
-    }
-
-    return moves;
-  };
-
-  const filterFromAllMoves = (piece, row, col) => {
-    const filteredMovesOfPiece = [];
-    for (let i = 0; i < allMoves.length; i++) {
-      const [movePiece, movePieceRow, movePieceCol, 
-        movePieceAttackRow, movePieceAttackCol] = allMoves[i];
-
-      if (movePiece === piece && movePieceRow === row && movePieceCol === col) {
-        filteredMovesOfPiece.push([movePieceAttackRow, movePieceAttackCol]);
-      }
-    }
-
-    return filteredMovesOfPiece;
-  }
+  // Legacy move-generation helpers removed: move legality is handled exclusively by `src/chess/engine.js`.
 
   // MODIFICATION 8: Update handleSquareClick with connection check
   const handleSquareClick = (row, col) => {
@@ -757,7 +373,16 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled) => {
     if (!piece || (isWhiteTurn && !isUpperCase(piece)) || (!isWhiteTurn && isUpperCase(piece))) return;
     setIsSquareSelected(true);
     setSelectedSquare([row, col]);
-    setValidMoves(filterFromAllMoves(piece, row, col));
+    const state = {
+      board,
+      turn: isWhiteTurn ? "w" : "b",
+      castling,
+      enPassant,
+      halfmoveClock,
+      fullmoveNumber,
+    };
+    const legal = legalMovesForSquare(state, row, col);
+    setValidMoves(legal.map((m) => [m.to.row, m.to.col]));
   };
 
   // MODIFICATION 9: Update handleDragStart with connection check
@@ -776,38 +401,35 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled) => {
     
     setIsSquareSelected(true);
     setSelectedSquare([row, col]);
-    setValidMoves(filterFromAllMoves(piece, row, col));
+    const state = {
+      board,
+      turn: isWhiteTurn ? "w" : "b",
+      castling,
+      enPassant,
+      halfmoveClock,
+      fullmoveNumber,
+    };
+    const legal = legalMovesForSquare(state, row, col);
+    setValidMoves(legal.map((m) => [m.to.row, m.to.col]));
     e.dataTransfer.setData("piece", piece);
     e.dataTransfer.setData("fromRow", row);
     e.dataTransfer.setData("fromCol", col);
   };
 
-  const isKingInCheck = () => {
-    for(let i = 0; i<8; i++){
-      for(let j = 0; j<8; j++){
-        const piece = board[i][j];
-        if( (isWhiteTurn && isUpperCase(piece)) || (!isWhiteTurn && !isUpperCase(piece))){
-          const kingRow = isWhiteTurn ? blackKingCoordinates[0] : whiteKingCoordinates[0];
-          const kingCol = isWhiteTurn ? blackKingCoordinates[1] : whiteKingCoordinates[1];
-          const moves = getValidMoves(piece, i, j);
-          if (moves.some(([alpha, beta, gamma, r, c]) => r === kingRow && c === kingCol)) {
-            if (isWhiteTurn) {
-              setIsKingInCheckHook(prevState => [prevState[0], true]);
-            } else {
-              setIsKingInCheckHook(prevState => [true, prevState[1]]);
-            }
-            console.log(isKingInCheckHook[0]);
-            return true;
-          }
-        }
-      }
-    }
-    return false;
-  }
+  // Legacy `isKingInCheck` removed (engine handles check + legality).
 
-  const convertBoardToFEN = (board) => {
+  const convertBoardToFEN = (
+    b,
+    {
+      turn = isWhiteTurn ? "w" : "b",
+      castling: cs = castling,
+      enPassant: ep = enPassant,
+      halfmoveClock: half = halfmoveClock,
+      fullmoveNumber: full = fullmoveNumber,
+    } = {}
+  ) => {
     const rows = [];
-    for (let row of board) {
+    for (let row of b) {
       let rowStr = '';
       let emptyCount = 0;
 
@@ -831,18 +453,15 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled) => {
     }
 
     const boardFEN = rows.join('/');
-    const activeColor = isWhiteTurn ? 'w' : 'b';
-    const castlingRights = 'KQkq';
-    const enPassant = '-';
-    const halfMoveClock = 0;
-    const fullMoveNumber = 1;
-
-    const fen = `${boardFEN} ${activeColor} ${castlingRights} ${enPassant} ${halfMoveClock} ${fullMoveNumber}`;
+    const activeColor = turn;
+    const castlingRights = ["K","Q","k","q"].filter((k) => cs?.[k]).join("") || "-";
+    const enPassantStr = ep ? `${String.fromCharCode("a".charCodeAt(0) + ep.col)}${8 - ep.row}` : "-";
+    const fen = `${boardFEN} ${activeColor} ${castlingRights} ${enPassantStr} ${half} ${full}`;
 
     return fen;
   };
 
-  const updatePrevMove = (fr, fc, tr, tc, piece, capturedPiece, castled, fenBefore) => {
+  const updatePrevMove = (fr, fc, tr, tc, piece, capturedPiece, castled, fenBefore, fenAfter, opponentInCheck) => {
     const sqnumfrom = 8-fr;
     const sqnumto = 8-tr;
     let moveFrom = String.fromCharCode('a'.charCodeAt(0) + fc);
@@ -851,25 +470,9 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled) => {
     if(castled){
       if(tc === 2){
         moveTo = "O-O-O";
-        if(fr === 0){
-          setRooksMoved([rooksMoved[0], rooksMoved[1], rooksMoved[2], true]);
-          setKingsMoved([kingsMoved[0], true]);
-        }
-        else if(fr === 7){
-          setRooksMoved([rooksMoved[0], true, rooksMoved[2], rooksMoved[3]]);
-          setKingsMoved([true, kingsMoved[1]]);
-        }
       }
       else{
         moveTo = "O-O";
-        if(fr === 0){
-          setRooksMoved([rooksMoved[0], rooksMoved[1], rooksMoved[2], true]);
-          setKingsMoved([kingsMoved[0], true]);
-        }
-        else if(fr === 7){
-          setRooksMoved([rooksMoved[0], rooksMoved[1], true, rooksMoved[3]]);
-          setKingsMoved([true, kingsMoved[1]]);
-        }
       } 
     }
     else{
@@ -883,90 +486,63 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled) => {
       }
     }
 
-    if(isKingInCheck()){
+    if (opponentInCheck) {
       moveTo += "+";
-    } 
-    else {
-      setIsKingInCheckHook([false, false]); 
     }
     
-    const fenAfter = convertBoardToFEN(board);
     const createdAt = new Date().toISOString();
-    setPrevMove({piece, moveFrom, moveTo, sqnumfrom, sqnumto, tc , tr});
+    // prevMove is no longer used for rules logic; move history is tracked via addMove
     
     // MODIFICATION 10: Add move to local history
     addMove({piece, moveFrom, moveTo, sqnumfrom, sqnumto, tc , tr, fenBefore, fenAfter, createdAt});
 
-    // after effects
-    if(piece === "R" && fc === 0){
-      setRooksMoved([rooksMoved[0], true, rooksMoved[2], rooksMoved[3]]);
-    } 
-    else if(piece === "R" && fc === 7){
-      setRooksMoved([true, rooksMoved[1], rooksMoved[2], rooksMoved[3]]);
-    }
-    else if(piece === "r" && fc === 0){
-      setRooksMoved([rooksMoved[0], rooksMoved[1], rooksMoved[2], true]);
-    }
-    else if(piece === "r" && fc === 7){
-      setRooksMoved([rooksMoved[0], rooksMoved[1], true, rooksMoved[3]]);
-    }
-
-    if(piece === "K") {
-      setKingsMoved([true, kingsMoved[1]]);
-      setWhiteKingCoordinates([tr, tc]);
-    }
-    else if(piece === "k") {
-      setKingsMoved([kingsMoved[0], true]);
-      setBlackKingCoordinates([tr, tc]);
-    }
+    // Note: castling rights and king/rook movement are tracked by engine state; UI coordinates are
+    // updated at move-apply time.
   }
 
   // MODIFICATION 11: Update handlePromotion to send move to server
   const handlePromotion = (promotionPiece) => {
-    const [row, col, piece, fromRow, fromCol, capturedPiece, fenBefore, castled, isEnPassant] = promotingPawn;
+    if (!promotingPawn?.baseMove) return;
 
-    const promotedPiece = (row === 7) ? promotionPiece.toLowerCase() : promotionPiece.toUpperCase();
-
-    const newBoard = [...board];
-    newBoard[row][col] = promotedPiece;
-    newBoard[fromRow][fromCol] = "";
-
-    setBoard(newBoard);
-    
-    // Update move locally
-    updatePrevMove(fromRow, fromCol, row, col, piece, capturedPiece, castled, fenBefore);
-    
-    // MODIFICATION 12: Prepare and send move data to server
-    const moveData = {
-      fromRow: fromRow,
-      fromCol: fromCol,
-      toRow: row,
-      toCol: col,
-      piece: piece,
-      promotedTo: promotedPiece,
-      capturedPiece: capturedPiece || "",
-      castled: castled || false,
-      isEnPassant: isEnPassant || false,
-      fenBefore: fenBefore,
-      fenAfter: convertBoardToFEN(newBoard),
-      board: newBoard,
-      timestamp: new Date().toISOString(),
-      isWhiteTurn: isWhiteTurn,
-      isPromotion: true,
-      matchId: matchId,
-      playerColor: playerColor
+    const state = {
+      board,
+      turn: isWhiteTurn ? "w" : "b",
+      castling,
+      enPassant,
+      halfmoveClock,
+      fullmoveNumber,
     };
-    
-    // Send move to server via WebSocket
-    if (sendMove) {
-      const success = sendMove(moveData);
-      if (!success) {
-        console.error("Failed to send promotion move to server");
-      }
-    }
-    
-    setIsWhiteTurn(!isWhiteTurn);
+
+    const promo = String(promotionPiece).toLowerCase(); // q/r/b/n
+    const move = { ...promotingPawn.baseMove, promotion: promo };
+    const fenBefore = promotingPawn.fenBefore;
+    const piece = promotingPawn.piece;
+    const capturedPiece = promotingPawn.capturedPiece || "";
+    const castled = !!move.castle;
+
+    const next = makeMove(state, move);
+
+    // sync board + engine state
+    setBoard(next.board);
+    setCastling(next.castling);
+    setEnPassant(next.enPassant);
+    setHalfmoveClock(next.halfmoveClock);
+    setFullmoveNumber(next.fullmoveNumber);
+    setIsWhiteTurn(next.turn === "w");
+
+    // UI coordinates are derived from board; no separate king/rook moved flags are needed.
+
+    const opponentInCheck = isInCheck(next, next.turn);
+    const fenAfter = convertBoardToFEN(next.board, next);
+    updatePrevMove(move.from.row, move.from.col, move.to.row, move.to.col, piece, capturedPiece, castled, fenBefore, fenAfter, opponentInCheck);
+
+    // Endgame detection
+    const outcome = getGameOutcome(next);
+    if (outcome.status === "checkmate") alert("Checkmate!");
+    if (outcome.status === "stalemate") alert("Stalemate!");
+
     setShowModal(false);
+    setPromotingPawn(null);
   };
 
   // MODIFICATION 13: Update handleDrop to send move to server
@@ -985,36 +561,32 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled) => {
     let piece = e.dataTransfer.getData("piece");
     const fromRow = parseInt(e.dataTransfer.getData("fromRow"));
     const fromCol = parseInt(e.dataTransfer.getData("fromCol"));
-    const fenBefore = convertBoardToFEN(board);
-    const newBoard = [...board];
-    let capturedPiece = newBoard[row][col];
-    let castled = false;
-    let isEnPassant = false;
+    const state = {
+      board,
+      turn: isWhiteTurn ? "w" : "b",
+      castling,
+      enPassant,
+      halfmoveClock,
+      fullmoveNumber,
+    };
+    const fenBefore = convertBoardToFEN(board, state);
     
     if (validMoves.some(([r, c]) => r === row && c === col)) {
-      // enpassant capture
-      if(piece.toLowerCase() === "p" && capturedPiece === "" && Math.abs(col - fromCol) === 1){
-        isEnPassant = true;
-        if(piece === "p") {
-          capturedPiece = newBoard[row-1][col];
-          newBoard[row-1][col] = "";
-        }
-        else {
-          capturedPiece = newBoard[row+1][col];
-          newBoard[row+1][col] = "";
-        }
+      const legal = legalMovesForSquare(state, fromRow, fromCol);
+      const chosen = legal.find((m) => m.to.row === row && m.to.col === col);
+      if (!chosen) {
+        console.warn("Illegal move (no matching legal move found).");
+        return;
       }
 
-      // promotion
-      if (piece === "p" && row === 7) {
-        setPromotingPawn([row, col, piece, fromRow, fromCol, capturedPiece, fenBefore, castled, isEnPassant]);
-        setShowModal(true);
-        setIsSquareSelected(false);
-        setSelectedSquare([]);
-        setValidMoves([]);
-        return;
-      } else if (piece === "P" && row === 0) {
-        setPromotingPawn([row, col, piece, fromRow, fromCol, capturedPiece, fenBefore, castled, isEnPassant]);
+      // If promotion, delay until modal choice
+      if (chosen.promotion) {
+        setPromotingPawn({
+          baseMove: chosen,
+          piece,
+          capturedPiece: board[row][col],
+          fenBefore,
+        });
         setShowModal(true);
         setIsSquareSelected(false);
         setSelectedSquare([]);
@@ -1022,77 +594,27 @@ const createMoveNotation = (from, to, piece, capturedPiece, castled) => {
         return;
       }
 
-      // castling logic
-      if(piece.toLowerCase() === "k" && Math.abs(col-fromCol) === 2){
-        castled = true;
-        // white short castle
-        if(piece === "K" && col === 6){
-          const rook = newBoard[row][7];
-          newBoard[row][7] = "";
-          newBoard[row][5] = rook;
-        }
-        // white long castle
-        if(piece === "K" && col === 2){
-          const rook = newBoard[row][0];
-          newBoard[row][0] = "";
-          newBoard[row][3] = rook;
-        }
-        // black short castle
-        if(piece === "k" && col === 6){
-          const rook = newBoard[row][7];
-          newBoard[row][7] = "";
-          newBoard[row][5] = rook;
-        }
-        // black long castle
-        if(piece === "k" && col === 2){
-          const rook = newBoard[row][0];
-          newBoard[row][0] = "";
-          newBoard[row][3] = rook;
-        }
-      }
-      
-      newBoard[row][col] = piece;
-      newBoard[fromRow][fromCol] = "";
-      setBoard(newBoard);
-      
-      // Update move locally
-      updatePrevMove(fromRow, fromCol, row, col, piece, capturedPiece, castled, fenBefore);
-      
-      // MODIFICATION 14: Prepare and send move data to server
-      // In handleDrop or wherever you prepare moveData:
-const moveData = {
-    // Change from nested objects to flat fields:
-    fromRow: fromRow,     // was: from: {row: 6, col: 4}
-    fromCol: fromCol,
-    toRow: row,         // was: to: {row: 4, col: 4}
-    toCol: col,
-    
-    piece: piece,
-    capturedPiece: capturedPiece || "",
-    castled: castled || false,
-    isEnPassant: isEnPassant || false,
-    isPromotion: false,
-    fenBefore: fenBefore,
-    fenAfter: convertBoardToFEN(newBoard),
-    board: newBoard,
-    isWhiteTurn: isWhiteTurn,
-    playerColor: playerColor,
-    matchId: matchId,  // This was undefined in your log! Fix this too!
-    timestamp: new Date().toISOString()
-};
+      const next = makeMove(state, chosen);
 
-// Make sure matchId is defined
-console.log("matchId in moveData:", moveData.matchId);
-      
-      // Send move to server via WebSocket
-      if (sendMove) {
-        const success = sendMove(moveData);
-        if (!success) {
-          console.error("Failed to send move to server");
-        }
-      }
-      
-      setIsWhiteTurn(!isWhiteTurn);
+      setBoard(next.board);
+      setCastling(next.castling);
+      setEnPassant(next.enPassant);
+      setHalfmoveClock(next.halfmoveClock);
+      setFullmoveNumber(next.fullmoveNumber);
+      setIsWhiteTurn(next.turn === "w");
+
+      // UI coordinates are derived from board; no separate king/rook moved flags are needed.
+
+      const castled = !!chosen.castle;
+      const capturedPiece = chosen.enPassant ? (piece === "P" ? "p" : "P") : board[row][col];
+      const opponentInCheck = isInCheck(next, next.turn);
+      const fenAfter = convertBoardToFEN(next.board, next);
+
+      updatePrevMove(fromRow, fromCol, row, col, piece, capturedPiece || "", castled, fenBefore, fenAfter, opponentInCheck);
+
+      const outcome = getGameOutcome(next);
+      if (outcome.status === "checkmate") alert("Checkmate!");
+      if (outcome.status === "stalemate") alert("Stalemate!");
     }
     setIsSquareSelected(false);
     setSelectedSquare([]);
