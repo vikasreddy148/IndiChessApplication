@@ -76,7 +76,9 @@ function addKingMoves(state, fromRow, fromCol, moves) {
     const canQ = color === "w" ? rights.Q : rights.q;
 
     // Kingside: squares f,g empty; squares e,f,g not attacked
-    if (canK && isEmpty(board[row][5]) && isEmpty(board[row][6])) {
+    const rookK = board[row][7];
+    const rookKOk = color === "w" ? rookK === "R" : rookK === "r";
+    if (canK && rookKOk && isEmpty(board[row][5]) && isEmpty(board[row][6])) {
       // Note: isSquareAttacked is defined below
       if (
         !isSquareAttacked(board, { row, col: 4 }, opp) &&
@@ -88,7 +90,9 @@ function addKingMoves(state, fromRow, fromCol, moves) {
     }
 
     // Queenside: squares b,c,d empty; squares e,d,c not attacked
-    if (canQ && isEmpty(board[row][1]) && isEmpty(board[row][2]) && isEmpty(board[row][3])) {
+    const rookQ = board[row][0];
+    const rookQOk = color === "w" ? rookQ === "R" : rookQ === "r";
+    if (canQ && rookQOk && isEmpty(board[row][1]) && isEmpty(board[row][2]) && isEmpty(board[row][3])) {
       if (
         !isSquareAttacked(board, { row, col: 4 }, opp) &&
         !isSquareAttacked(board, { row, col: 3 }, opp) &&
@@ -150,7 +154,13 @@ function addPawnMoves(state, fromRow, fromCol, moves) {
     if (ep.row === fromRow + dir && Math.abs(ep.col - fromCol) === 1) {
       // target square must be empty; capture pawn behind it
       if (isEmpty(board[ep.row][ep.col])) {
-        moves.push({ fromRow, fromCol, toRow: ep.row, toCol: ep.col, isEnPassant: true });
+        const capRow = fromRow; // pawn being captured is on our current rank
+        const capCol = ep.col;
+        const capPiece = board?.[capRow]?.[capCol] || "";
+        const expected = color === "w" ? "p" : "P";
+        if (capPiece === expected) {
+          moves.push({ fromRow, fromCol, toRow: ep.row, toCol: ep.col, isEnPassant: true });
+        }
       }
     }
   }

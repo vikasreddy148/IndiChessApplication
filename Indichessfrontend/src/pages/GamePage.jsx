@@ -34,7 +34,10 @@ function cloneBoard(board) {
 }
 
 function Board({ board, selected, legalTargets, onSquareClick, orientation }) {
-  const rows = orientation === "black" ? [...board].reverse() : board;
+  // Render using display coordinates (dr,dc) and map to actual board coordinates.
+  // This avoids mismatches where we flip rows but not columns (or vice versa).
+  const isBlack = orientation === "black";
+
   return (
     <div
       style={{
@@ -45,19 +48,20 @@ function Board({ board, selected, legalTargets, onSquareClick, orientation }) {
         width: 56 * 8
       }}
     >
-      {rows.map((row, rIdx) =>
-        row.map((piece, cIdx) => {
-          const rowIndex = orientation === "black" ? 7 - rIdx : rIdx;
-          const colIndex = orientation === "black" ? 7 - cIdx : cIdx;
+      {Array.from({ length: 8 }).map((_, dr) =>
+        Array.from({ length: 8 }).map((__, dc) => {
+          const rowIndex = isBlack ? 7 - dr : dr;
+          const colIndex = isBlack ? 7 - dc : dc;
+          const piece = board[rowIndex][colIndex];
+
+          // Use actual coordinates for coloring so a1 stays dark.
           const isDark = (rowIndex + colIndex) % 2 === 1;
-          const isSel =
-            selected &&
-            selected.row === rowIndex &&
-            selected.col === colIndex;
+          const isSel = selected && selected.row === rowIndex && selected.col === colIndex;
           const isTarget = legalTargets?.some((t) => t.row === rowIndex && t.col === colIndex);
+
           return (
             <button
-              key={`${rowIndex}-${colIndex}`}
+              key={`${dr}-${dc}`}
               onClick={() => onSquareClick(rowIndex, colIndex)}
               style={{
                 width: 56,
@@ -123,6 +127,45 @@ function PromotionModal({ open, color, onPick, onClose }) {
   );
 }
 
+function DrawOfferModal({ open, from, onAccept, onClose }) {
+  if (!open) return null;
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.55)",
+        display: "grid",
+        placeItems: "center",
+        zIndex: 60
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "#0f172a",
+          border: "1px solid rgba(255,255,255,0.15)",
+          borderRadius: 12,
+          padding: 16,
+          width: 360
+        }}
+      >
+        <h3 style={{ marginTop: 0 }}>Draw offer</h3>
+        <div style={{ marginBottom: 12 }}>{from ? <b>{from}</b> : "Opponent"} offered a draw.</div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={onAccept} style={{ padding: 10 }}>
+            Accept
+          </button>
+          <button onClick={onClose} style={{ padding: 10 }}>
+            Decline
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function GamePage() {
   const { matchId } = useParams();
   const nav = useNavigate();
@@ -136,6 +179,8 @@ export function GamePage() {
   const [error, setError] = useState(null);
   const [gameEnd, setGameEnd] = useState(null);
   const [promotion, setPromotion] = useState({ open: false, from: null, to: null, choices: null });
+  const [drawOffer, setDrawOffer] = useState({ open: false, from: null });
+  const [statusText, setStatusText] = useState(null);
 
   const stompRef = useRef(null);
   const connectedRef = useRef(false);
@@ -210,8 +255,42 @@ export function GamePage() {
       });
 
       client.subscribe(`/topic/game-state/${matchId}`, (msg) => {
-        // placeholder for draw/resign/time updates
-        // console.log("game-state", msg.body);
+        try {
+          const payload = JSON.parse(msg.body);
+          // Possible payloads:
+          // - { type: "RESIGNATION", player, matchId, ... }
+          // - GameStatusDTO { status: "RESIGNED", ... }
+          // - { type: "DRAW_ACCEPTED", status: "DRAW", ... }
+          if (payload?.type === "RESIGNATION") {
+            setStatusText(`${payload.player} resigned`);
+            setGameEnd({ over: true, result: "ended", reason: "resignation" });
+            return;
+          }
+          if (payload?.status === "RESIGNED") {
+            setStatusText("Game ended by resignation");
+            setGameEnd({ over: true, result: "ended", reason: "resignation" });
+            return;
+          }
+          if (payload?.type === "DRAW_ACCEPTED" || payload?.status === "DRAW") {
+            setStatusText("Draw agreed");
+            setGameEnd({ over: true, result: "draw", reason: "draw" });
+            return;
+          }
+        } catch {
+          // ignore
+        }
+      });
+
+      // Draw offers are delivered to the opponent's user queue by backend
+      client.subscribe(`/user/queue/draw-offers`, (msg) => {
+        try {
+          const payload = JSON.parse(msg.body);
+          if (payload?.type === "DRAW_OFFER") {
+            setDrawOffer({ open: true, from: payload.from || null });
+          }
+        } catch {
+          // ignore
+        }
       });
 
       // Join (server uses Principal from cookie-auth handshake)
@@ -367,6 +446,23 @@ export function GamePage() {
           if (mv) commitMove(mv);
         }}
       />
+      <DrawOfferModal
+        open={drawOffer.open}
+        from={drawOffer.from}
+        onClose={() => setDrawOffer({ open: false, from: null })}
+        onAccept={() => {
+          const client = stompRef.current;
+          if (!client || !connectedRef.current) {
+            setError("WebSocket not connected");
+            return;
+          }
+          client.publish({
+            destination: `/app/game/${matchId}/draw/accept`,
+            body: JSON.stringify({ type: "DRAW_ACCEPT", matchId: Number(matchId), timestamp: new Date().toISOString() })
+          });
+          setDrawOffer({ open: false, from: null });
+        }}
+      />
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h2 style={{ marginTop: 0 }}>Game #{matchId}</h2>
@@ -390,11 +486,49 @@ export function GamePage() {
         <div style={{ marginBottom: 12, opacity: 0.9 }}>
           You are <b>{playerColor || "…"}</b> — {myTurn ? "your move" : "waiting"}
         </div>
+        <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+          <button
+            disabled={Boolean(gameEnd?.over)}
+            onClick={() => {
+              const client = stompRef.current;
+              if (!client || !connectedRef.current) {
+                setError("WebSocket not connected");
+                return;
+              }
+              client.publish({
+                destination: `/app/game/${matchId}/draw`,
+                body: JSON.stringify({ type: "DRAW_OFFER", matchId: Number(matchId), timestamp: new Date().toISOString() })
+              });
+              setStatusText("Draw offer sent");
+            }}
+          >
+            Offer draw
+          </button>
+          <button
+            disabled={Boolean(gameEnd?.over)}
+            onClick={() => {
+              const client = stompRef.current;
+              if (!client || !connectedRef.current) {
+                setError("WebSocket not connected");
+                return;
+              }
+              client.publish({
+                destination: `/app/game/${matchId}/resign`,
+                body: JSON.stringify({ type: "RESIGN", matchId: Number(matchId), timestamp: new Date().toISOString() })
+              });
+              setStatusText("You resigned");
+              setGameEnd({ over: true, result: "ended", reason: "resignation" });
+            }}
+          >
+            Resign
+          </button>
+        </div>
         {gameEnd?.over ? (
           <div style={{ marginBottom: 12, padding: 10, border: "1px solid rgba(255,255,255,0.2)" }}>
             Game over: <b>{gameEnd.reason}</b> ({gameEnd.result})
           </div>
         ) : null}
+        {statusText ? <div style={{ marginBottom: 12, opacity: 0.85 }}>{statusText}</div> : null}
         {error ? <div style={{ color: "#ff9a9a", marginBottom: 12 }}>{error}</div> : null}
         {state?.board ? (
           <Board

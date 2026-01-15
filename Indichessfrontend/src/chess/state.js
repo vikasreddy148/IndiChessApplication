@@ -1,10 +1,20 @@
 import { algebraicToSquare, isEmpty, squareToAlgebraic } from "./board";
 
 export function initialStateFromBoard(board) {
+  // Infer castling rights from piece positions (prevents "ghost castling" when rook is missing)
+  const castling = { K: false, Q: false, k: false, q: false };
+  if (board?.[7]?.[4] === "K") {
+    if (board?.[7]?.[7] === "R") castling.K = true;
+    if (board?.[7]?.[0] === "R") castling.Q = true;
+  }
+  if (board?.[0]?.[4] === "k") {
+    if (board?.[0]?.[7] === "r") castling.k = true;
+    if (board?.[0]?.[0] === "r") castling.q = true;
+  }
   return {
     board,
     turn: "w",
-    castling: { K: true, Q: true, k: true, q: true },
+    castling,
     enPassant: "-", // algebraic square or "-"
     halfmove: 0,
     fullmove: 1
@@ -198,16 +208,20 @@ export function applyMove(state, move) {
       const rookFromCol = 7;
       const rookToCol = 5;
       const rook = board[toRow][rookFromCol];
-      board[toRow][rookFromCol] = "";
-      board[toRow][rookToCol] = rook;
+      if (rook === (state.turn === "w" ? "R" : "r")) {
+        board[toRow][rookFromCol] = "";
+        board[toRow][rookToCol] = rook;
+      }
     }
     // queenside: king to c-file (col 2), rook a->d
     if (toCol === 2) {
       const rookFromCol = 0;
       const rookToCol = 3;
       const rook = board[toRow][rookFromCol];
-      board[toRow][rookFromCol] = "";
-      board[toRow][rookToCol] = rook;
+      if (rook === (state.turn === "w" ? "R" : "r")) {
+        board[toRow][rookFromCol] = "";
+        board[toRow][rookToCol] = rook;
+      }
     }
   } else {
     // Promotion sets the promoted piece (already case-correct in move generation)
