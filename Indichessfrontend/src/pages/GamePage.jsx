@@ -34,7 +34,7 @@ function cloneBoard(board) {
   return board.map((row) => row.slice());
 }
 
-function Board({ board, selected, legalTargets, onSquareClick, orientation }) {
+function Board({ board, selected, legalTargets, onSquareClick, orientation, lastMove }) {
   // Render using display coordinates (dr,dc) and map to actual board coordinates.
   // This avoids mismatches where we flip rows but not columns (or vice versa).
   const isBlack = orientation === "black";
@@ -59,6 +59,10 @@ function Board({ board, selected, legalTargets, onSquareClick, orientation }) {
           const isDark = (rowIndex + colIndex) % 2 === 1;
           const isSel = selected && selected.row === rowIndex && selected.col === colIndex;
           const isTarget = legalTargets?.some((t) => t.row === rowIndex && t.col === colIndex);
+          const isLastMove = lastMove && (
+            (lastMove.from.row === rowIndex && lastMove.from.col === colIndex) ||
+            (lastMove.to.row === rowIndex && lastMove.to.col === colIndex)
+          );
 
           return (
             <button
@@ -68,8 +72,9 @@ function Board({ board, selected, legalTargets, onSquareClick, orientation }) {
                 "ig-sq",
                 isDark ? "dark" : "light",
                 isSel ? "selected" : "",
-                isTarget ? "target" : ""
-              ].join(" ")}
+                isTarget ? "target" : "",
+                isLastMove ? "last-move" : ""
+              ].filter(Boolean).join(" ")}
             >
               {PIECES[piece] || ""}
             </button>
@@ -92,19 +97,19 @@ function PromotionModal({ open, color, onPick, onClose }) {
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in"
+      className="ig-modal-overlay"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-chess-card border border-white/15 rounded-2xl p-6 w-80 shadow-2xl animate-slide-up"
+        className="ig-modal-content"
       >
-        <h3 className="text-xl font-bold mb-4 text-chess-text">Promote Pawn</h3>
-        <div className="flex gap-3 flex-wrap mb-4">
+        <h3 className="ig-modal-title">Promote Pawn</h3>
+        <div className="ig-promotion-grid">
           {opts.map((p) => (
             <button
               key={p}
               onClick={() => onPick(p)}
-              className="w-16 h-16 text-3xl flex items-center justify-center rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 hover:scale-110 transition-all duration-200 active:scale-95"
+              className="ig-promotion-piece"
             >
               {PIECES[p] || p}
             </button>
@@ -112,7 +117,7 @@ function PromotionModal({ open, color, onPick, onClose }) {
         </div>
         <button
           onClick={onClose}
-          className="w-full py-2.5 px-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors duration-200 font-semibold text-chess-text"
+          className="ig-modal-btn ig-modal-btn-secondary"
         >
           Cancel
         </button>
@@ -126,26 +131,28 @@ function DrawOfferModal({ open, from, onAccept, onClose }) {
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] animate-fade-in"
+      className="ig-modal-overlay"
+      style={{ zIndex: 60 }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-chess-card border border-white/15 rounded-2xl p-6 w-96 shadow-2xl animate-slide-up"
+        className="ig-modal-content"
+        style={{ maxWidth: '420px' }}
       >
-        <h3 className="text-xl font-bold mb-4 text-chess-text">Draw Offer</h3>
-        <div className="mb-6 text-chess-text/90">
-          <span className="font-semibold">{from ? from : "Opponent"}</span> offered a draw.
+        <h3 className="ig-modal-title">Draw Offer</h3>
+        <div className="ig-draw-offer-text">
+          <strong>{from ? from : "Opponent"}</strong> offered a draw.
         </div>
-        <div className="flex gap-3">
+        <div className="ig-modal-actions">
           <button
             onClick={onAccept}
-            className="flex-1 py-3 px-4 rounded-xl bg-green-500/20 border border-green-500/30 hover:bg-green-500/30 transition-all duration-200 font-semibold text-green-400 hover:scale-105 active:scale-95"
+            className="ig-modal-btn ig-modal-btn-primary"
           >
             Accept
           </button>
           <button
             onClick={onClose}
-            className="flex-1 py-3 px-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors duration-200 font-semibold text-chess-text"
+            className="ig-modal-btn ig-modal-btn-secondary"
           >
             Decline
           </button>
@@ -171,6 +178,7 @@ export function GamePage() {
   const [drawOffer, setDrawOffer] = useState({ open: false, from: null });
   const [statusText, setStatusText] = useState(null);
   const [gameType, setGameType] = useState(null);
+  const [lastMove, setLastMove] = useState(null); // { from: {row, col}, to: {row, col} }
   
   // Timer states (in milliseconds)
   const [whiteTime, setWhiteTime] = useState(10 * 60 * 1000); // 10 minutes
@@ -247,6 +255,14 @@ export function GamePage() {
               // Otherwise keep previous rights but replace board + flip turn based on payload
               const newTurn = payload?.isWhiteTurn ? "w" : "b";
               return { ...prev, board: payload.board, turn: newTurn };
+            });
+          }
+          // Track last move for highlighting
+          if (payload?.fromRow !== undefined && payload?.fromCol !== undefined && 
+              payload?.toRow !== undefined && payload?.toCol !== undefined) {
+            setLastMove({
+              from: { row: payload.fromRow, col: payload.fromCol },
+              to: { row: payload.toRow, col: payload.toCol }
             });
           }
           if (typeof payload?.isWhiteTurn === "boolean") {
@@ -402,6 +418,19 @@ export function GamePage() {
     return ms > 0 && ms < 60 * 1000;
   }
 
+  // Check if time is critical (under 10 seconds)
+  function isTimeCritical(ms) {
+    return ms > 0 && ms < 10 * 1000;
+  }
+
+  // Get clock class based on state
+  function getClockClass(isActive, timeMs) {
+    if (!isActive) return "ig-clock inactive";
+    if (isTimeCritical(timeMs)) return "ig-clock active danger";
+    if (isTimeLow(timeMs)) return "ig-clock active warning";
+    return "ig-clock active";
+  }
+
   function onSquareClick(row, col) {
     if (!state?.board) return;
     if (!playerColor) return;
@@ -468,6 +497,12 @@ export function GamePage() {
     const board = state.board;
     const movingPiece = board[mv.fromRow][mv.fromCol];
     const capturedPiece = board[mv.toRow][mv.toCol] || "";
+
+    // Track last move for highlighting
+    setLastMove({
+      from: { row: mv.fromRow, col: mv.fromCol },
+      to: { row: mv.toRow, col: mv.toCol }
+    });
 
     // Optimistic local update; authoritative sync comes from WS broadcast
     const fenBefore = toFEN(state);
@@ -609,23 +644,21 @@ export function GamePage() {
                 <div className="ig-player-sub">{playerColor === "white" ? "Black" : "White"}</div>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {(gameType === "RAPID" || gameType === "BLITZ") && (
-                <div className={`ig-pill ${
-                  state?.turn === (playerColor === "white" ? "b" : "w") 
-                    ? isTimeLow(playerColor === "white" ? blackTime : whiteTime)
-                      ? "bg-red-600/30 border-red-600/50 text-red-300 animate-pulse"
-                      : "bg-red-500/20 border-red-500/30 text-red-400"
-                    : isTimeLow(playerColor === "white" ? blackTime : whiteTime)
-                      ? "bg-orange-500/20 border-orange-500/30 text-orange-400"
-                      : "bg-gray-500/20 border-gray-500/30"
-                }`}>
-                  ⏱️ {formatTime(playerColor === "white" ? blackTime : whiteTime)}
+                <div className={getClockClass(
+                  state?.turn === (playerColor === "white" ? "b" : "w"),
+                  playerColor === "white" ? blackTime : whiteTime
+                )}>
+                  {formatTime(playerColor === "white" ? blackTime : whiteTime)}
                 </div>
               )}
-              <div className={`ig-pill ${myTurn ? "bg-yellow-500/20 border-yellow-500/30 text-yellow-400" : "bg-gray-500/20 border-gray-500/30"}`}>
-                {myTurn ? "⏱️ Your move" : "⏳ Waiting"}
-              </div>
+              {/* Minimize turn indicator - clock is more important */}
+              {!myTurn && (
+                <div className="ig-pill bg-gray-500/15 border-gray-500/20 text-gray-400 text-xs px-2 py-1">
+                  Waiting
+                </div>
+              )}
             </div>
           </div>
 
@@ -669,6 +702,7 @@ export function GamePage() {
                 legalTargets={legalTargets}
                 onSquareClick={onSquareClick}
                 orientation={orientation}
+                lastMove={lastMove}
               />
             ) : (
               <div className="flex items-center justify-center h-[448px]">
@@ -688,21 +722,27 @@ export function GamePage() {
                 <div className="ig-player-sub">{playerColor || "…"}</div>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {(gameType === "RAPID" || gameType === "BLITZ") && (
-                <div className={`ig-pill ${
-                  state?.turn === (playerColor === "white" ? "w" : "b") 
-                    ? isTimeLow(playerColor === "white" ? whiteTime : blackTime)
-                      ? "bg-red-600/30 border-red-600/50 text-red-300 animate-pulse"
-                      : "bg-red-500/20 border-red-500/30 text-red-400"
-                    : isTimeLow(playerColor === "white" ? whiteTime : blackTime)
-                      ? "bg-orange-500/20 border-orange-500/30 text-orange-400"
-                      : "bg-gray-500/20 border-gray-500/30"
-                }`}>
-                  ⏱️ {formatTime(playerColor === "white" ? whiteTime : blackTime)}
+                <div className={getClockClass(
+                  state?.turn === (playerColor === "white" ? "w" : "b"),
+                  playerColor === "white" ? whiteTime : blackTime
+                )}>
+                  {formatTime(playerColor === "white" ? whiteTime : blackTime)}
                 </div>
               )}
-              <div className="ig-pill bg-blue-500/20 border-blue-500/30 text-blue-400">Game #{matchId}</div>
+              {/* Show turn indicator only when it's your move - less clutter */}
+              {myTurn && (
+                <div className="ig-pill bg-yellow-500/20 border-yellow-500/30 text-yellow-400 text-xs px-2 py-1">
+                  Your move
+                </div>
+              )}
+              {/* Game ID only when not your turn to minimize clutter */}
+              {!myTurn && gameType !== "RAPID" && gameType !== "BLITZ" && (
+                <div className="ig-pill bg-blue-500/15 border-blue-500/20 text-blue-400 text-xs px-2 py-1">
+                  #{matchId}
+                </div>
+              )}
             </div>
           </div>
         </main>

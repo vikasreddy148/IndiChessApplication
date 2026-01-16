@@ -26,7 +26,7 @@ function isBlackPiece(p) {
   return p && p.toLowerCase() === p;
 }
 
-function Board({ board, selected, legalTargets, onSquareClick, orientation }) {
+function Board({ board, selected, legalTargets, onSquareClick, orientation, lastMove }) {
   const isBlack = orientation === "black";
   const ranks = isBlack ? ["1", "2", "3", "4", "5", "6", "7", "8"] : ["8", "7", "6", "5", "4", "3", "2", "1"];
   const files = isBlack ? ["h", "g", "f", "e", "d", "c", "b", "a"] : ["a", "b", "c", "d", "e", "f", "g", "h"];
@@ -48,6 +48,10 @@ function Board({ board, selected, legalTargets, onSquareClick, orientation }) {
             const isDark = (rowIndex + colIndex) % 2 === 1;
             const isSel = selected && selected.row === rowIndex && selected.col === colIndex;
             const isTarget = legalTargets?.some((t) => t.row === rowIndex && t.col === colIndex);
+            const isLastMove = lastMove && (
+              (lastMove.from.row === rowIndex && lastMove.from.col === colIndex) ||
+              (lastMove.to.row === rowIndex && lastMove.to.col === colIndex)
+            );
 
             return (
               <button
@@ -57,8 +61,9 @@ function Board({ board, selected, legalTargets, onSquareClick, orientation }) {
                   "ig-sq",
                   isDark ? "dark" : "light",
                   isSel ? "selected" : "",
-                  isTarget ? "target" : ""
-                ].join(" ")}
+                  isTarget ? "target" : "",
+                  isLastMove ? "last-move" : ""
+                ].filter(Boolean).join(" ")}
               >
                 {PIECES[piece] || ""}
               </button>
@@ -81,19 +86,19 @@ function PromotionModal({ open, color, onPick, onClose }) {
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in"
+      className="ig-modal-overlay"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-chess-card border border-white/15 rounded-2xl p-6 w-80 shadow-2xl animate-slide-up"
+        className="ig-modal-content"
       >
-        <h3 className="text-xl font-bold mb-4 text-chess-text">Promote Pawn</h3>
-        <div className="flex gap-3 flex-wrap mb-4">
+        <h3 className="ig-modal-title">Promote Pawn</h3>
+        <div className="ig-promotion-grid">
           {opts.map((p) => (
             <button
               key={p}
               onClick={() => onPick(p)}
-              className="w-16 h-16 text-3xl flex items-center justify-center rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 hover:scale-110 transition-all duration-200 active:scale-95"
+              className="ig-promotion-piece"
             >
               {PIECES[p] || p}
             </button>
@@ -101,7 +106,7 @@ function PromotionModal({ open, color, onPick, onClose }) {
         </div>
         <button
           onClick={onClose}
-          className="w-full py-2.5 px-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors duration-200 font-semibold text-chess-text"
+          className="ig-modal-btn ig-modal-btn-secondary"
         >
           Cancel
         </button>
@@ -129,6 +134,13 @@ export function LocalGamePage() {
   const [moves, setMoves] = useState([]);
   const [promotion, setPromotion] = useState({ open: false, from: null, to: null, choices: null });
   const [gameEnd, setGameEnd] = useState(null);
+  const [lastMove, setLastMove] = useState(null);
+  
+  // Timer states
+  const [timerEnabled, setTimerEnabled] = useState(false);
+  const [whiteTime, setWhiteTime] = useState(10 * 60 * 1000); // 10 minutes in milliseconds
+  const [blackTime, setBlackTime] = useState(10 * 60 * 1000);
+  const timerIntervalRef = React.useRef(null);
 
   const currentTurn = state.turn === "w" ? "white" : "black";
   const orientation = "white"; // Always show white at bottom for local play
@@ -143,6 +155,81 @@ export function LocalGamePage() {
       setGameEnd(gameEndStatus);
     }
   }, [gameEndStatus]);
+
+  // Timer logic
+  React.useEffect(() => {
+    if (!timerEnabled || gameEnd?.over || !state) {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+      return;
+    }
+
+    const isWhiteTurn = state.turn === "w";
+    
+    // Clear any existing timer
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+    }
+
+    // Start countdown for the active player
+    timerIntervalRef.current = setInterval(() => {
+      if (isWhiteTurn) {
+        setWhiteTime((prev) => {
+          const newTime = prev - 1000;
+          if (newTime <= 0) {
+            setGameEnd({ over: true, result: "black", reason: "time" });
+            return 0;
+          }
+          return newTime;
+        });
+      } else {
+        setBlackTime((prev) => {
+          const newTime = prev - 1000;
+          if (newTime <= 0) {
+            setGameEnd({ over: true, result: "white", reason: "time" });
+            return 0;
+          }
+          return newTime;
+        });
+      }
+    }, 1000);
+
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+    };
+  }, [state?.turn, gameEnd, timerEnabled, state]);
+
+  // Format time as MM:SS
+  function formatTime(ms) {
+    if (ms <= 0) return "0:00";
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  }
+
+  // Check if time is running low (under 1 minute)
+  function isTimeLow(ms) {
+    return ms > 0 && ms < 60 * 1000;
+  }
+
+  // Check if time is critical (under 10 seconds)
+  function isTimeCritical(ms) {
+    return ms > 0 && ms < 10 * 1000;
+  }
+
+  // Get clock class based on state
+  function getClockClass(isActive, timeMs) {
+    if (!isActive) return "ig-clock inactive";
+    if (isTimeCritical(timeMs)) return "ig-clock active danger";
+    if (isTimeLow(timeMs)) return "ig-clock active warning";
+    return "ig-clock active";
+  }
 
   function onSquareClick(row, col) {
     if (!state?.board) return;
@@ -199,6 +286,12 @@ export function LocalGamePage() {
   }
 
   function commitMove(mv) {
+    // Track last move for highlighting
+    setLastMove({
+      from: { row: mv.fromRow, col: mv.fromCol },
+      to: { row: mv.toRow, col: mv.toCol }
+    });
+
     const nextState = applyMove(state, mv);
     setState(nextState);
     setSelected(null);
@@ -219,6 +312,28 @@ export function LocalGamePage() {
     setMoves([]);
     setPromotion({ open: false, from: null, to: null, choices: null });
     setGameEnd(null);
+    setLastMove(null);
+    // Reset timers if enabled
+    if (timerEnabled) {
+      setWhiteTime(10 * 60 * 1000);
+      setBlackTime(10 * 60 * 1000);
+    }
+  }
+
+  function toggleTimer() {
+    const newEnabled = !timerEnabled;
+    setTimerEnabled(newEnabled);
+    if (newEnabled) {
+      // Reset timers when enabling
+      setWhiteTime(10 * 60 * 1000);
+      setBlackTime(10 * 60 * 1000);
+    } else {
+      // Stop timer when disabling
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+    }
   }
 
   return (
@@ -260,6 +375,16 @@ export function LocalGamePage() {
               <span className="ig-pill">1v1</span>
             </div>
             <div className="ig-row">
+              <button 
+                className={`ig-btn ${timerEnabled ? "ig-btn-primary" : ""}`} 
+                type="button" 
+                onClick={toggleTimer}
+                title={timerEnabled ? "Disable 10 min timer" : "Enable 10 min timer"}
+              >
+                {timerEnabled ? "⏱️ Timer: ON" : "⏱️ Timer: OFF"}
+              </button>
+            </div>
+            <div className="ig-row">
               <button className="ig-btn ig-btn-primary" type="button" onClick={handleReset}>
                 New Game
               </button>
@@ -279,8 +404,20 @@ export function LocalGamePage() {
                 <div className="ig-player-sub">Player 2</div>
               </div>
             </div>
-            <div className={`ig-pill ${currentTurn === "black" ? "bg-yellow-500/20 border-yellow-500/30 text-yellow-400" : "bg-gray-500/20 border-gray-500/30"}`}>
-              {currentTurn === "black" ? "⏱️ Black's turn" : "⏳ Waiting"}
+            <div className="flex items-center gap-2">
+              {timerEnabled && (
+                <div className={getClockClass(
+                  currentTurn === "black",
+                  blackTime
+                )}>
+                  {formatTime(blackTime)}
+                </div>
+              )}
+              {!timerEnabled && (
+                <div className={`ig-pill ${currentTurn === "black" ? "bg-yellow-500/20 border-yellow-500/30 text-yellow-400" : "bg-gray-500/20 border-gray-500/30"}`}>
+                  {currentTurn === "black" ? "⏱️ Black's turn" : "⏳ Waiting"}
+                </div>
+              )}
             </div>
           </div>
 
@@ -291,7 +428,13 @@ export function LocalGamePage() {
                 <div>
                   <div className="font-bold">Game Over</div>
                   <div className="text-sm opacity-90">
-                    {gameEnd.reason === "checkmate" ? "Checkmate!" : gameEnd.reason === "stalemate" ? "Stalemate" : gameEnd.reason}
+                    {gameEnd.reason === "time" 
+                      ? `Time expired - ${gameEnd.result === "white" ? "White" : "Black"} wins!`
+                      : gameEnd.reason === "checkmate" 
+                        ? "Checkmate!" 
+                        : gameEnd.reason === "stalemate" 
+                          ? "Stalemate" 
+                          : gameEnd.reason}
                   </div>
                 </div>
               </div>
@@ -306,6 +449,7 @@ export function LocalGamePage() {
                 legalTargets={legalTargets}
                 onSquareClick={onSquareClick}
                 orientation={orientation}
+                lastMove={lastMove}
               />
             ) : (
               <div className="flex items-center justify-center h-[448px]">
@@ -325,8 +469,20 @@ export function LocalGamePage() {
                 <div className="ig-player-sub">Player 1</div>
               </div>
             </div>
-            <div className={`ig-pill ${currentTurn === "white" ? "bg-yellow-500/20 border-yellow-500/30 text-yellow-400" : "bg-gray-500/20 border-gray-500/30"}`}>
-              {currentTurn === "white" ? "⏱️ White's turn" : "⏳ Waiting"}
+            <div className="flex items-center gap-2">
+              {timerEnabled && (
+                <div className={getClockClass(
+                  currentTurn === "white",
+                  whiteTime
+                )}>
+                  {formatTime(whiteTime)}
+                </div>
+              )}
+              {!timerEnabled && (
+                <div className={`ig-pill ${currentTurn === "white" ? "bg-yellow-500/20 border-yellow-500/30 text-yellow-400" : "bg-gray-500/20 border-gray-500/30"}`}>
+                  {currentTurn === "white" ? "⏱️ White's turn" : "⏳ Waiting"}
+                </div>
+              )}
             </div>
           </div>
         </main>
