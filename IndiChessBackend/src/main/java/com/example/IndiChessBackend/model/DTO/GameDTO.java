@@ -19,6 +19,7 @@ public class GameDTO {
     private boolean isMyTurn;
     private String[][] board;
     private String fen;
+    private String gameType;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

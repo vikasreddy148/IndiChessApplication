@@ -170,6 +170,12 @@ export function GamePage() {
   const [promotion, setPromotion] = useState({ open: false, from: null, to: null, choices: null });
   const [drawOffer, setDrawOffer] = useState({ open: false, from: null });
   const [statusText, setStatusText] = useState(null);
+  const [gameType, setGameType] = useState(null);
+  
+  // Timer states (in milliseconds)
+  const [whiteTime, setWhiteTime] = useState(10 * 60 * 1000); // 10 minutes
+  const [blackTime, setBlackTime] = useState(10 * 60 * 1000); // 10 minutes
+  const timerIntervalRef = useRef(null);
 
   const stompRef = useRef(null);
   const connectedRef = useRef(false);
@@ -187,6 +193,21 @@ export function GamePage() {
       const nextMyTurn = Boolean(game?.myTurn ?? game?.isMyTurn);
       setMyTurn(nextMyTurn);
       setPlayerColor(game?.playerColor || null);
+      const receivedGameType = game?.gameType || "STANDARD";
+      setGameType(receivedGameType);
+      
+      // Initialize timers based on game type
+      if (receivedGameType === "RAPID") {
+        setWhiteTime(10 * 60 * 1000); // 10 minutes
+        setBlackTime(10 * 60 * 1000); // 10 minutes
+      } else if (receivedGameType === "BLITZ") {
+        setWhiteTime(3 * 60 * 1000 + 1000); // 3 minutes + 1 second increment
+        setBlackTime(3 * 60 * 1000 + 1000);
+      }
+      
+      // Debug: log gameType to console
+      console.log("Game loaded - gameType:", receivedGameType, "Full game object:", game);
+      
       const fen = game?.fen || null;
       const parsed = fen ? parseFEN(fen) : null;
       const nextState = parsed && parsed.board ? parsed : initialStateFromBoard(game?.board || null);
@@ -224,7 +245,8 @@ export function GamePage() {
               const next = payload?.fenAfter ? parseFEN(payload.fenAfter) : null;
               if (next && next.board) return next;
               // Otherwise keep previous rights but replace board + flip turn based on payload
-              return { ...prev, board: payload.board, turn: payload?.isWhiteTurn ? "w" : "b" };
+              const newTurn = payload?.isWhiteTurn ? "w" : "b";
+              return { ...prev, board: payload.board, turn: newTurn };
             });
           }
           if (typeof payload?.isWhiteTurn === "boolean") {
@@ -315,6 +337,70 @@ export function GamePage() {
     if (!state) return;
     setGameEnd(detectGameEndBasic(state));
   }, [state]);
+
+  // Timer logic - only for RAPID and BLITZ games
+  useEffect(() => {
+    if (gameEnd?.over || !state || (gameType !== "RAPID" && gameType !== "BLITZ")) {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+      return;
+    }
+
+    const isWhiteTurn = state.turn === "w";
+    
+    // Clear any existing timer
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+    }
+
+    // Start countdown for the active player
+    timerIntervalRef.current = setInterval(() => {
+      if (isWhiteTurn) {
+        setWhiteTime((prev) => {
+          const newTime = prev - 1000;
+          if (newTime <= 0) {
+            // Time expired - white loses
+            setGameEnd({ over: true, result: "black", reason: "time" });
+            return 0;
+          }
+          return newTime;
+        });
+      } else {
+        setBlackTime((prev) => {
+          const newTime = prev - 1000;
+          if (newTime <= 0) {
+            // Time expired - black loses
+            setGameEnd({ over: true, result: "white", reason: "time" });
+            return 0;
+          }
+          return newTime;
+        });
+      }
+    }, 1000);
+
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+    };
+  }, [state?.turn, gameEnd, gameType]);
+
+  // Format time as MM:SS
+  function formatTime(ms) {
+    if (ms <= 0) return "0:00";
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  }
+
+  // Check if time is running low (under 1 minute)
+  function isTimeLow(ms) {
+    return ms > 0 && ms < 60 * 1000;
+  }
 
   function onSquareClick(row, col) {
     if (!state?.board) return;
@@ -523,8 +609,23 @@ export function GamePage() {
                 <div className="ig-player-sub">{playerColor === "white" ? "Black" : "White"}</div>
               </div>
             </div>
-            <div className={`ig-pill ${myTurn ? "bg-yellow-500/20 border-yellow-500/30 text-yellow-400" : "bg-gray-500/20 border-gray-500/30"}`}>
-              {myTurn ? "⏱️ Your move" : "⏳ Waiting"}
+            <div className="flex items-center gap-3">
+              {(gameType === "RAPID" || gameType === "BLITZ") && (
+                <div className={`ig-pill ${
+                  state?.turn === (playerColor === "white" ? "b" : "w") 
+                    ? isTimeLow(playerColor === "white" ? blackTime : whiteTime)
+                      ? "bg-red-600/30 border-red-600/50 text-red-300 animate-pulse"
+                      : "bg-red-500/20 border-red-500/30 text-red-400"
+                    : isTimeLow(playerColor === "white" ? blackTime : whiteTime)
+                      ? "bg-orange-500/20 border-orange-500/30 text-orange-400"
+                      : "bg-gray-500/20 border-gray-500/30"
+                }`}>
+                  ⏱️ {formatTime(playerColor === "white" ? blackTime : whiteTime)}
+                </div>
+              )}
+              <div className={`ig-pill ${myTurn ? "bg-yellow-500/20 border-yellow-500/30 text-yellow-400" : "bg-gray-500/20 border-gray-500/30"}`}>
+                {myTurn ? "⏱️ Your move" : "⏳ Waiting"}
+              </div>
             </div>
           </div>
 
@@ -535,7 +636,9 @@ export function GamePage() {
                 <div>
                   <div className="font-bold">Game Over</div>
                   <div className="text-sm opacity-90">
-                    {gameEnd.reason} • {gameEnd.result}
+                    {gameEnd.reason === "time" 
+                      ? `Time expired - ${gameEnd.result === "white" ? "White" : "Black"} wins!`
+                      : `${gameEnd.reason} • ${gameEnd.result}`}
                   </div>
                 </div>
               </div>
@@ -585,7 +688,22 @@ export function GamePage() {
                 <div className="ig-player-sub">{playerColor || "…"}</div>
               </div>
             </div>
-            <div className="ig-pill bg-blue-500/20 border-blue-500/30 text-blue-400">Game #{matchId}</div>
+            <div className="flex items-center gap-3">
+              {(gameType === "RAPID" || gameType === "BLITZ") && (
+                <div className={`ig-pill ${
+                  state?.turn === (playerColor === "white" ? "w" : "b") 
+                    ? isTimeLow(playerColor === "white" ? whiteTime : blackTime)
+                      ? "bg-red-600/30 border-red-600/50 text-red-300 animate-pulse"
+                      : "bg-red-500/20 border-red-500/30 text-red-400"
+                    : isTimeLow(playerColor === "white" ? whiteTime : blackTime)
+                      ? "bg-orange-500/20 border-orange-500/30 text-orange-400"
+                      : "bg-gray-500/20 border-gray-500/30"
+                }`}>
+                  ⏱️ {formatTime(playerColor === "white" ? whiteTime : blackTime)}
+                </div>
+              )}
+              <div className="ig-pill bg-blue-500/20 border-blue-500/30 text-blue-400">Game #{matchId}</div>
+            </div>
           </div>
         </main>
 

@@ -11,6 +11,7 @@
     "sockjs-client": "^1.6.1"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.23",
     "postcss": "^8.5.6",

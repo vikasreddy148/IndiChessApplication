@@ -289,6 +289,7 @@ public class MatchService {
         response.put("startedAt", match.getStartedAt());
         response.put("currentPly", match.getCurrentPly());
         response.put("fenCurrent", match.getFenCurrent());
+        response.put("gameType", match.getGameType() != null ? match.getGameType().toString() : "STANDARD");
 
         return response;
     }

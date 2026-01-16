@@ -92,6 +92,7 @@ public class GameService {
         gameDTO.setMyTurn(isMyTurn);
         gameDTO.setBoard(gameState.getBoard());
         gameDTO.setFen(convertBoardToFEN(gameState.getBoard(), gameState.isWhiteTurn()));
+        gameDTO.setGameType(match.getGameType() != null ? match.getGameType().toString() : "STANDARD");
         gameDTO.setCreatedAt(match.getCreatedAt());
         gameDTO.setUpdatedAt(match.getUpdatedAt());
 
