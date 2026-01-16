@@ -99,10 +99,17 @@
   color: #e8ebf5;
   cursor: pointer;
   font-weight: 800;
+  transition: all 0.2s ease;
 }
 
 .ic-home-btn:hover {
   background: rgba(255, 255, 255, 0.09);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.ic-home-btn:active {
+  transform: translateY(0);
 }
 
 .ic-home-btn-primary {
@@ -160,11 +167,18 @@
   gap: 12px;
   cursor: pointer;
   color: #e8ebf5;
+  transition: all 0.3s ease;
 }
 
-.ic-card:hover {
+.ic-card:hover:not(:disabled) {
   border-color: rgba(255, 255, 255, 0.14);
   background: #26272c;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.ic-card:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .ic-card-left {
@@ -199,11 +213,12 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.04);
-  padding: 12px;
+  padding: 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  transition: all 0.3s ease;
 }
 
 @media (max-width: 980px) {

@@ -1,6 +1,7 @@
 package com.example.IndiChessBackend.controller;
 
 import com.example.IndiChessBackend.model.DTO.LoginDto;
+import com.example.IndiChessBackend.model.DTO.UserSearchResponse;
 import com.example.IndiChessBackend.service.JwtService;
 import com.example.IndiChessBackend.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -13,9 +14,14 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
+@RequestMapping("/users")
 @RequiredArgsConstructor
 public class UserController {
+
+    private final UserService userService;
 
     @GetMapping("/hello")
     public String showHello(){
@@ -28,5 +34,12 @@ public class UserController {
         return new ResponseEntity<>("User", HttpStatus.OK);
     }
 
+    @GetMapping("/users/search")
+    public ResponseEntity<List<UserSearchResponse>> searchUsers(
+            @RequestParam String query,
+            HttpServletRequest request) {
+        List<UserSearchResponse> users = userService.searchUsers(query, request);
+        return ResponseEntity.ok(users);
+    }
 
 }

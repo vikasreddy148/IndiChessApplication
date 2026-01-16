@@ -92,36 +92,30 @@ function PromotionModal({ open, color, onPick, onClose }) {
   return (
     <div
       onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.55)",
-        display: "grid",
-        placeItems: "center",
-        zIndex: 50
-      }}
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "#0f172a",
-          border: "1px solid rgba(255,255,255,0.15)",
-          borderRadius: 12,
-          padding: 16,
-          width: 320
-        }}
+        className="bg-chess-card border border-white/15 rounded-2xl p-6 w-80 shadow-2xl animate-slide-up"
       >
-        <h3 style={{ marginTop: 0 }}>Promote pawn</h3>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <h3 className="text-xl font-bold mb-4 text-chess-text">Promote Pawn</h3>
+        <div className="flex gap-3 flex-wrap mb-4">
           {opts.map((p) => (
-            <button key={p} onClick={() => onPick(p)} style={{ padding: 10, width: 64 }}>
+            <button
+              key={p}
+              onClick={() => onPick(p)}
+              className="w-16 h-16 text-3xl flex items-center justify-center rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 hover:scale-110 transition-all duration-200 active:scale-95"
+            >
               {PIECES[p] || p}
             </button>
           ))}
         </div>
-        <div style={{ marginTop: 12 }}>
-          <button onClick={onClose}>Cancel</button>
-        </div>
+        <button
+          onClick={onClose}
+          className="w-full py-2.5 px-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors duration-200 font-semibold text-chess-text"
+        >
+          Cancel
+        </button>
       </div>
     </div>
   );
@@ -132,32 +126,27 @@ function DrawOfferModal({ open, from, onAccept, onClose }) {
   return (
     <div
       onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.55)",
-        display: "grid",
-        placeItems: "center",
-        zIndex: 60
-      }}
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] animate-fade-in"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "#0f172a",
-          border: "1px solid rgba(255,255,255,0.15)",
-          borderRadius: 12,
-          padding: 16,
-          width: 360
-        }}
+        className="bg-chess-card border border-white/15 rounded-2xl p-6 w-96 shadow-2xl animate-slide-up"
       >
-        <h3 style={{ marginTop: 0 }}>Draw offer</h3>
-        <div style={{ marginBottom: 12 }}>{from ? <b>{from}</b> : "Opponent"} offered a draw.</div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={onAccept} style={{ padding: 10 }}>
+        <h3 className="text-xl font-bold mb-4 text-chess-text">Draw Offer</h3>
+        <div className="mb-6 text-chess-text/90">
+          <span className="font-semibold">{from ? from : "Opponent"}</span> offered a draw.
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={onAccept}
+            className="flex-1 py-3 px-4 rounded-xl bg-green-500/20 border border-green-500/30 hover:bg-green-500/30 transition-all duration-200 font-semibold text-green-400 hover:scale-105 active:scale-95"
+          >
             Accept
           </button>
-          <button onClick={onClose} style={{ padding: 10 }}>
+          <button
+            onClick={onClose}
+            className="flex-1 py-3 px-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors duration-200 font-semibold text-chess-text"
+          >
             Decline
           </button>
         </div>
@@ -534,16 +523,40 @@ export function GamePage() {
                 <div className="ig-player-sub">{playerColor === "white" ? "Black" : "White"}</div>
               </div>
             </div>
-            <div className="ig-pill">{myTurn ? "Your move" : "Waiting"}</div>
+            <div className={`ig-pill ${myTurn ? "bg-yellow-500/20 border-yellow-500/30 text-yellow-400" : "bg-gray-500/20 border-gray-500/30"}`}>
+              {myTurn ? "⏱️ Your move" : "⏳ Waiting"}
+            </div>
           </div>
 
           {gameEnd?.over ? (
-            <div className="ig-status">
-              Game over: <b>{gameEnd.reason}</b> ({gameEnd.result})
+            <div className="ig-status bg-gradient-to-r from-purple-500/20 to-blue-500/20 border-purple-500/30 animate-slide-up">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">🏁</span>
+                <div>
+                  <div className="font-bold">Game Over</div>
+                  <div className="text-sm opacity-90">
+                    {gameEnd.reason} • {gameEnd.result}
+                  </div>
+                </div>
+              </div>
             </div>
           ) : null}
-          {statusText ? <div className="ig-status">{statusText}</div> : null}
-          {error ? <div className="ig-error">{error}</div> : null}
+          {statusText ? (
+            <div className="ig-status bg-blue-500/10 border-blue-500/30 animate-slide-up">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">ℹ️</span>
+                <span>{statusText}</span>
+              </div>
+            </div>
+          ) : null}
+          {error ? (
+            <div className="ig-error animate-slide-up">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">⚠️</span>
+                <span>{error}</span>
+              </div>
+            </div>
+          ) : null}
 
           <div className="ig-card ig-boardwrap">
             {state?.board ? (
@@ -555,7 +568,12 @@ export function GamePage() {
                 orientation={orientation}
               />
             ) : (
-              <div style={{ padding: 12 }}>Loading board…</div>
+              <div className="flex items-center justify-center h-[448px]">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="w-12 h-12 border-4 border-chess-text/20 border-t-chess-text/60 rounded-full animate-spin"></div>
+                  <div className="text-chess-text/70 font-medium">Loading board…</div>
+                </div>
+              </div>
             )}
           </div>
 
@@ -567,7 +585,7 @@ export function GamePage() {
                 <div className="ig-player-sub">{playerColor || "…"}</div>
               </div>
             </div>
-            <div className="ig-pill">Game #{matchId}</div>
+            <div className="ig-pill bg-blue-500/20 border-blue-500/30 text-blue-400">Game #{matchId}</div>
           </div>
         </main>
 
@@ -593,7 +611,7 @@ export function GamePage() {
             </div>
             <div className="ig-actions">
               <button
-                className="ig-action"
+                className="ig-action hover:bg-blue-500/20 hover:border-blue-500/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95"
                 disabled={Boolean(gameEnd?.over)}
                 onClick={() => {
                   const client = stompRef.current;
@@ -610,11 +628,14 @@ export function GamePage() {
               >
                 🤝 Draw
               </button>
-              <button className="ig-action" onClick={() => nav("/home")}>
+              <button
+                className="ig-action hover:bg-white/12 transition-all duration-200 hover:scale-105 active:scale-95"
+                onClick={() => nav("/home")}
+              >
                 🏠 Home
               </button>
               <button
-                className="ig-action ig-action-danger"
+                className="ig-action ig-action-danger hover:scale-105 active:scale-95 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={Boolean(gameEnd?.over)}
                 onClick={() => {
                   const client = stompRef.current;

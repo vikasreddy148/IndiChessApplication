@@ -3,9 +3,11 @@ package com.example.IndiChessBackend.service;
 import com.example.IndiChessBackend.model.Match;
 import com.example.IndiChessBackend.model.GameType;
 import com.example.IndiChessBackend.model.User;
+import com.example.IndiChessBackend.model.DTO.ChallengeResponse;
 import com.example.IndiChessBackend.model.DTO.MatchmakingStatusResponse;
 import com.example.IndiChessBackend.repo.MatchRepo;
 import com.example.IndiChessBackend.repo.UserRepo;
+import com.example.IndiChessBackend.service.ChallengeService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -29,14 +31,16 @@ public class MatchService {
     private final MatchRepo matchRepo;
     private final GameService gameService;
     private final MatchQueueService matchQueueService;
+    private final ChallengeService challengeService;
 
     @Autowired
-    MatchService(JwtService jwtService, UserRepo userRepo, MatchRepo matchRepo, GameService gameService, MatchQueueService matchQueueService) {
+    MatchService(JwtService jwtService, UserRepo userRepo, MatchRepo matchRepo, GameService gameService, MatchQueueService matchQueueService, ChallengeService challengeService) {
         this.jwtService = jwtService;
         this.userRepo = userRepo;
         this.matchRepo = matchRepo;
         this.gameService = gameService;
         this.matchQueueService = matchQueueService;
+        this.challengeService = challengeService;
 
         // Clean up old entries periodically (optional)
         new Timer().schedule(new TimerTask() {
@@ -287,5 +291,114 @@ public class MatchService {
         response.put("fenCurrent", match.getFenCurrent());
 
         return response;
+    }
+
+    public String sendChallenge(HttpServletRequest request, String opponentUsername, GameType gameType) {
+        String tk = getJwtFromCookie(request);
+        if (tk == null) {
+            throw new RuntimeException("Not authenticated");
+        }
+        String userName = jwtService.extractUsername(tk);
+        if (userName == null) {
+            throw new RuntimeException("Invalid token");
+        }
+
+        if (userName.equals(opponentUsername)) {
+            throw new RuntimeException("Cannot challenge yourself");
+        }
+
+        User opponent = userRepo.getUserByUsername(opponentUsername);
+        if (opponent == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        if (gameType == null) {
+            gameType = GameType.STANDARD;
+        }
+
+        return challengeService.createChallenge(userName, opponentUsername, gameType);
+    }
+
+    public List<ChallengeResponse> getIncomingChallenges(HttpServletRequest request) {
+        String tk = getJwtFromCookie(request);
+        if (tk == null) {
+            throw new RuntimeException("Not authenticated");
+        }
+        String userName = jwtService.extractUsername(tk);
+        if (userName == null) {
+            throw new RuntimeException("Invalid token");
+        }
+        return challengeService.getIncomingChallenges(userName);
+    }
+
+    public List<ChallengeResponse> getOutgoingChallenges(HttpServletRequest request) {
+        String tk = getJwtFromCookie(request);
+        if (tk == null) {
+            throw new RuntimeException("Not authenticated");
+        }
+        String userName = jwtService.extractUsername(tk);
+        if (userName == null) {
+            throw new RuntimeException("Invalid token");
+        }
+        return challengeService.getOutgoingChallenges(userName);
+    }
+
+    public MatchmakingStatusResponse acceptChallenge(HttpServletRequest request, String challengeId) {
+        String tk = getJwtFromCookie(request);
+        if (tk == null) {
+            throw new RuntimeException("Not authenticated");
+        }
+        String userName = jwtService.extractUsername(tk);
+        if (userName == null) {
+            throw new RuntimeException("Invalid token");
+        }
+
+        ChallengeService.ChallengeData challenge = challengeService.acceptChallenge(challengeId, userName);
+        if (challenge == null) {
+            throw new RuntimeException("Challenge not found or expired");
+        }
+
+        // Create direct match
+        User player1 = userRepo.getUserByUsername(challenge.fromUsername);
+        User player2 = userRepo.getUserByUsername(challenge.toUsername);
+        if (player1 == null || player2 == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        Match match = new Match(player1, player2, IN_PROGRESS, 0);
+        match.setGameType(challenge.gameType);
+        Match saved = matchRepo.save(match);
+
+        Long matchId = saved.getId();
+        matchQueueService.addPendingMatch(challenge.fromUsername, challenge.toUsername, matchId);
+
+        // Initialize game state
+        gameService.getGameDetails(matchId, request);
+
+        return new MatchmakingStatusResponse("MATCHED", matchId, challenge.gameType);
+    }
+
+    public boolean declineChallenge(HttpServletRequest request, String challengeId) {
+        String tk = getJwtFromCookie(request);
+        if (tk == null) {
+            throw new RuntimeException("Not authenticated");
+        }
+        String userName = jwtService.extractUsername(tk);
+        if (userName == null) {
+            throw new RuntimeException("Invalid token");
+        }
+        return challengeService.declineChallenge(challengeId, userName);
+    }
+
+    public boolean cancelChallenge(HttpServletRequest request, String challengeId) {
+        String tk = getJwtFromCookie(request);
+        if (tk == null) {
+            throw new RuntimeException("Not authenticated");
+        }
+        String userName = jwtService.extractUsername(tk);
+        if (userName == null) {
+            throw new RuntimeException("Invalid token");
+        }
+        return challengeService.cancelChallenge(challengeId, userName);
     }
 }

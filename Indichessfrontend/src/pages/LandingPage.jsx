@@ -4,9 +4,9 @@ import "../styles/landing.css";
 
 function SidebarItem({ label }) {
   return (
-    <button className="ic-side-item" type="button">
-      <span className="ic-side-dot" />
-      <span>{label}</span>
+    <button className="ic-side-item group" type="button">
+      <span className="ic-side-dot group-hover:scale-125 group-hover:bg-green-400/40 transition-all duration-200" />
+      <span className="group-hover:translate-x-1 transition-transform duration-200">{label}</span>
     </button>
   );
 }
@@ -87,10 +87,16 @@ export function LandingPage() {
               Match instantly, play smoothly, and improve with analysis and puzzles.
             </p>
             <div className="ic-cta-row">
-              <Link className="ic-btn ic-btn-primary ic-btn-lg" to="/signup">
+              <Link
+                className="ic-btn ic-btn-primary ic-btn-lg hover:scale-105 active:scale-95 transition-transform duration-200"
+                to="/signup"
+              >
                 Get Started
               </Link>
-              <Link className="ic-btn ic-btn-ghost ic-btn-lg" to="/login">
+              <Link
+                className="ic-btn ic-btn-ghost ic-btn-lg hover:scale-105 active:scale-95 transition-transform duration-200"
+                to="/login"
+              >
                 I already have an account
               </Link>
             </div>

@@ -3,6 +3,7 @@ import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "../auth/AuthContext";
 import { HomePage } from "./HomePage";
 import { GamePage } from "./GamePage";
+import { LocalGamePage } from "./LocalGamePage";
 import { LandingPage } from "./LandingPage";
 import "../styles/auth.css";
 
@@ -247,6 +248,14 @@ export function App() {
           element={
             <RequireAuth>
               <GamePage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/local-game"
+          element={
+            <RequireAuth>
+              <LocalGamePage />
             </RequireAuth>
           }
         />
