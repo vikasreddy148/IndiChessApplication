@@ -8,12 +8,28 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: 'kern' 1, 'liga' 1;
+
+  /* Semantic color tokens - dark mode default */
+  --bg-app: #0f1117;
+  --bg-panel: #1a1d24;
+  --bg-elevated: #1f2329;
+  
+  --accent-primary: #60a5fa;
+  --accent-active: #34d399;
+  --accent-warn: #f59e0b;
+  
+  --text-primary: #e8ebf5;
+  --text-muted: rgba(232, 235, 245, 0.70);
+  
+  /* Board colors - increased contrast */
+  --board-light: #eeeed2;
+  --board-dark: #769656;
 }
 
 body {
   margin: 0;
-  background: #0f1117;
-  color: #e8ebf5;
+  background: var(--bg-app);
+  color: var(--text-primary);
   font-weight: 400;
   line-height: 1.5;
 }

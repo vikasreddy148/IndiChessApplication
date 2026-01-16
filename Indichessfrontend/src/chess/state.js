@@ -201,6 +201,7 @@ export function applyMove(state, move) {
   board[fromRow][fromCol] = "";
 
   // Castling: move king to destination and rook accordingly
+  let rookFromColForRights = null;
   if (castled && movingLower === "k") {
     board[toRow][toCol] = moving;
     // kingside: king to g-file (col 6), rook h->f
@@ -211,6 +212,7 @@ export function applyMove(state, move) {
       if (rook === (state.turn === "w" ? "R" : "r")) {
         board[toRow][rookFromCol] = "";
         board[toRow][rookToCol] = rook;
+        rookFromColForRights = rookFromCol; // Track for castling rights removal
       }
     }
     // queenside: king to c-file (col 2), rook a->d
@@ -221,6 +223,7 @@ export function applyMove(state, move) {
       if (rook === (state.turn === "w" ? "R" : "r")) {
         board[toRow][rookFromCol] = "";
         board[toRow][rookToCol] = rook;
+        rookFromColForRights = rookFromCol; // Track for castling rights removal
       }
     }
   } else {
@@ -264,6 +267,11 @@ export function applyMove(state, move) {
   // If rook moves from home squares, remove that side's right
   if (moving === "R" || moving === "r") {
     removeCastlingRightsForRookSquare(castling, fromRow, fromCol);
+  }
+
+  // If castling happened, remove the rook's castling rights (rook moved from home square)
+  if (castled && rookFromColForRights !== null) {
+    removeCastlingRightsForRookSquare(castling, toRow, rookFromColForRights);
   }
 
   // If rook is captured on a home square, remove that right

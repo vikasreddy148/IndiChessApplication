@@ -636,7 +636,7 @@ export function GamePage() {
         </aside>
 
         <main className="ig-center">
-          <div className="ig-card ig-playerbar">
+          <div className={`ig-card ig-playerbar ${!myTurn && state?.turn ? 'active' : ''}`}>
             <div className="ig-player-left">
               <div className="ig-avatar" />
               <div>
@@ -645,13 +645,15 @@ export function GamePage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {(gameType === "RAPID" || gameType === "BLITZ") && (
-                <div className={getClockClass(
+              {(gameType === "RAPID" || gameType === "BLITZ") ? (
+                <div className={`${getClockClass(
                   state?.turn === (playerColor === "white" ? "b" : "w"),
                   playerColor === "white" ? blackTime : whiteTime
-                )}>
+                )} tabular-nums`}>
                   {formatTime(playerColor === "white" ? blackTime : whiteTime)}
                 </div>
+              ) : (
+                <div className="ig-clock-placeholder" />
               )}
               {/* Minimize turn indicator - clock is more important */}
               {!myTurn && (
@@ -694,7 +696,7 @@ export function GamePage() {
             </div>
           ) : null}
 
-          <div className="ig-card ig-boardwrap">
+          <div className="ig-card ig-boardwrap ring-1 ring-white/10 shadow-2xl shadow-black/40 rounded-xl overflow-hidden">
             {state?.board ? (
               <Board
                 board={state.board}
@@ -714,7 +716,7 @@ export function GamePage() {
             )}
           </div>
 
-          <div className="ig-card ig-playerbar">
+          <div className={`ig-card ig-playerbar ${myTurn && state?.turn ? 'active' : ''}`}>
             <div className="ig-player-left">
               <div className="ig-avatar" />
               <div>
@@ -723,13 +725,15 @@ export function GamePage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {(gameType === "RAPID" || gameType === "BLITZ") && (
-                <div className={getClockClass(
+              {(gameType === "RAPID" || gameType === "BLITZ") ? (
+                <div className={`${getClockClass(
                   state?.turn === (playerColor === "white" ? "w" : "b"),
                   playerColor === "white" ? whiteTime : blackTime
-                )}>
+                )} tabular-nums`}>
                   {formatTime(playerColor === "white" ? whiteTime : blackTime)}
                 </div>
+              ) : (
+                <div className="ig-clock-placeholder" />
               )}
               {/* Show turn indicator only when it's your move - less clutter */}
               {myTurn && (
@@ -769,7 +773,7 @@ export function GamePage() {
             </div>
             <div className="ig-actions">
               <button
-                className="ig-action hover:bg-blue-500/20 hover:border-blue-500/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95"
+                className="ig-action hover:bg-blue-500/20 hover:border-blue-500/30 transition-all duration-100 ease-out disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95"
                 disabled={Boolean(gameEnd?.over)}
                 onClick={() => {
                   const client = stompRef.current;
@@ -787,13 +791,13 @@ export function GamePage() {
                 🤝 Draw
               </button>
               <button
-                className="ig-action hover:bg-white/12 transition-all duration-200 hover:scale-105 active:scale-95"
+                className="ig-action hover:bg-white/12 transition-all duration-100 ease-out hover:scale-105 active:scale-95"
                 onClick={() => nav("/home")}
               >
                 🏠 Home
               </button>
               <button
-                className="ig-action ig-action-danger hover:scale-105 active:scale-95 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="ig-action ig-action-danger hover:scale-105 active:scale-95 transition-all duration-100 ease-out disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={Boolean(gameEnd?.over)}
                 onClick={() => {
                   const client = stompRef.current;

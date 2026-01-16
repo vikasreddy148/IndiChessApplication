@@ -1,18 +1,19 @@
 :root{
-  --ig-bg:#0f1117;
-  --ig-panel:#1a1d24;
-  --ig-card:#1f2329;
-  --ig-border:rgba(255,255,255,0.08);
-  --ig-text:#e8ebf5;
-  --ig-muted:rgba(232,235,245,0.70);
-  /* Softer, more balanced chessboard colors */
-  --ig-green-dark:#769656;
-  --ig-green-light:#eeeed2;
+  /* Use semantic tokens from global.css */
+  --ig-bg: var(--bg-app);
+  --ig-panel: var(--bg-panel);
+  --ig-card: var(--bg-elevated);
+  --ig-border: rgba(255,255,255,0.08);
+  --ig-text: var(--text-primary);
+  --ig-muted: var(--text-muted);
+  /* Board colors - increased contrast */
+  --ig-green-dark: var(--board-dark);
+  --ig-green-light: var(--board-light);
   /* Clock colors */
-  --clock-active:#60a5fa;
-  --clock-warning:#f59e0b;
-  --clock-danger:#ef4444;
-  --clock-inactive:rgba(255,255,255,0.15);
+  --clock-active: var(--accent-primary);
+  --clock-warning: var(--accent-warn);
+  --clock-danger: #ef4444;
+  --clock-inactive: rgba(255,255,255,0.15);
 }
 
 .ig-game{
@@ -43,7 +44,7 @@
   top:16px;
   /* Minimize sidebar - less distraction during play */
   opacity: 0.85;
-  transition: opacity 0.1s ease;
+  transition: opacity 0.1s ease-out;
 }
 .ig-sidebar:hover{
   opacity: 1;
@@ -82,7 +83,7 @@
   border:1px solid transparent;
   color:rgba(232,235,245,0.92);
   cursor:pointer;
-  transition: all 0.2s ease;
+  transition: all 0.1s ease-out;
 }
 .ig-navbtn:hover{
   background:rgba(255,255,255,0.05);
@@ -129,8 +130,8 @@
   padding:12px 20px;
   border-radius:8px;
   border:2.5px solid;
-  /* Instant transitions */
-  transition: all 0.05s ease;
+  /* Fast transitions */
+  transition: all 0.1s ease-out;
   min-width:120px;
   text-align:center;
   display:inline-flex;
@@ -139,6 +140,11 @@
   gap:4px;
   /* High contrast for instant reading */
   text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+/* Reserve clock space even when timer is OFF */
+.ig-clock-placeholder{
+  min-width:120px;
+  height:48px;
 }
 .ig-clock.active{
   background:rgba(96,165,250,0.2);
@@ -188,6 +194,7 @@
     transform: scale(1.02);
   }
 }
+/* Primary button style */
 .ig-btn{
   border-radius:12px;
   padding:10px 12px;
@@ -196,7 +203,7 @@
   color:var(--ig-text);
   cursor:pointer;
   font-weight:900;
-  transition: all 0.2s ease;
+  transition: all 0.1s ease-out;
 }
 .ig-btn:hover{
   background:rgba(255,255,255,0.09);
@@ -212,10 +219,14 @@
 }
 .ig-btn-danger:hover{ background:rgba(239,68,68,0.18); }
 .ig-btn-primary{
-  border-color:rgba(34,197,94,0.25);
-  background:rgba(34,197,94,0.12);
+  border-color:rgba(96,165,250,0.4);
+  background:rgba(96,165,250,0.15);
+  color: var(--accent-primary);
 }
-.ig-btn-primary:hover{ background:rgba(34,197,94,0.18); }
+.ig-btn-primary:hover{ 
+  background:rgba(96,165,250,0.25);
+  border-color:rgba(96,165,250,0.6);
+}
 
 .ig-center{
   display:grid;
@@ -238,7 +249,14 @@
   align-items:center;
   justify-content:space-between;
   gap:12px;
+  transition: all 0.1s ease-out;
   /* Minimize player info - clock is more important */
+}
+/* Active player highlighting */
+.ig-playerbar.active{
+  background: rgba(96,165,250,0.08);
+  border-left: 2px solid rgba(96,165,250,0.6);
+  border-color: rgba(96,165,250,0.2);
 }
 .ig-player-left{
   display:flex;
@@ -307,12 +325,14 @@
   display:grid;
   grid-template-columns:repeat(8,60px);
   grid-template-rows:repeat(8,60px);
-  border-radius:8px;
+  border-radius:12px;
   overflow:hidden;
-  border:1px solid rgba(255,255,255,0.08);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.2);
+  border:1px solid rgba(255,255,255,0.1);
+  /* Visually dominant board container */
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.3);
   background: var(--ig-green-dark);
-  /* Remove hover shadow transition for instant feedback */
+  /* Ensure board remains perfectly square */
+  aspect-ratio: 1 / 1;
 }
 .ig-sq{
   width:60px;
@@ -323,8 +343,8 @@
   cursor:pointer;
   font-size:36px;
   line-height:1;
-  /* Instant transitions for blitz - no delay */
-  transition: background-color 0.05s ease, transform 0.05s ease;
+  /* Fast transitions */
+  transition: background-color 0.1s ease-out, transform 0.1s ease-out;
   position: relative;
   user-select: none;
   -webkit-user-select: none;
@@ -337,6 +357,7 @@
   position: relative;
   z-index: 1;
 }
+/* Increased contrast between light/dark squares */
 .ig-sq.light{ 
   background:var(--ig-green-light); 
   color:#0a0a0a; 
@@ -351,6 +372,7 @@
   background: rgba(255,255,255,0.2) !important;
   z-index: 10;
 }
+/* Selected square utility class */
 .ig-sq.selected{
   background: rgba(96,165,250,0.4) !important;
   outline:3px solid rgba(96,165,250,1);
@@ -358,7 +380,7 @@
   box-shadow: inset 0 0 0 1px rgba(96,165,250,0.6), 0 0 12px rgba(96,165,250,0.5);
   z-index: 5;
 }
-/* More subtle last move highlight - preserve square color with overlay */
+/* Last move utility class */
 .ig-sq.last-move{
   position: relative;
 }
@@ -370,10 +392,11 @@
   pointer-events: none;
   z-index: 0;
 }
+/* Legal move indicators utility class */
 .ig-sq.target{
   position: relative;
 }
-/* More obvious legal move indicators for instant recognition */
+/* Legal move dot indicator via pseudo-element */
 .ig-sq.target::before{
   content: '';
   position: absolute;
@@ -386,8 +409,7 @@
   transform: translate(-50%, -50%);
   z-index: 2;
   pointer-events: none;
-  /* Instant - no transition delay */
-  transition: transform 0.05s ease;
+  transition: transform 0.1s ease-out;
 }
 .ig-sq.target:hover::before{
   background: rgba(46,213,115,0.85);
@@ -404,8 +426,7 @@
   z-index: 1;
   pointer-events: none;
   opacity: 0.8;
-  /* Instant feedback */
-  transition: opacity 0.05s ease, border-color 0.05s ease;
+  transition: opacity 0.1s ease-out, border-color 0.1s ease-out;
 }
 .ig-sq.target:hover::after{
   border-color: rgba(46,213,115,0.95);
@@ -469,7 +490,7 @@
   gap:10px;
   padding:8px 10px;
   border-radius:12px;
-  transition: all 0.2s ease;
+  transition: all 0.1s ease-out;
 }
 .ig-move-row:nth-child(odd){ background:rgba(255,255,255,0.04); }
 .ig-move-row:hover{
@@ -481,8 +502,8 @@
   font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New",monospace;
   font-size:12px;
   opacity:0.8;
-  /* Instant feedback */
-  transition: all 0.05s ease;
+  /* Fast transitions */
+  transition: all 0.1s ease-out;
   cursor:pointer;
   padding:2px 4px;
   border-radius:4px;
@@ -499,6 +520,7 @@
   gap:10px;
   padding:12px;
 }
+/* Secondary button style - muted and lighter */
 .ig-action{
   border-radius:8px;
   padding:10px 14px;
@@ -512,8 +534,8 @@
   justify-content:center;
   align-items:center;
   gap:6px;
-  /* Instant feedback */
-  transition: all 0.05s ease;
+  /* Fast transitions */
+  transition: all 0.1s ease-out;
 }
 .ig-action:hover{
   background:rgba(255,255,255,0.1);
@@ -594,7 +616,7 @@
   font-weight:600;
   font-size:14px;
   cursor:pointer;
-  transition:all 0.1s ease;
+  transition:all 0.1s ease-out;
   display:flex;
   align-items:center;
   justify-content:center;
@@ -645,7 +667,7 @@
   border:2px solid rgba(255,255,255,0.12);
   border-radius:10px;
   cursor:pointer;
-  transition:all 0.1s ease;
+  transition:all 0.1s ease-out;
   color:#0a0a0a;
   font-weight:500;
 }
