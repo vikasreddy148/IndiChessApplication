@@ -131,12 +131,13 @@ function addPawnMoves(state, fromRow, fromCol, moves) {
     }
   }
 
-  // captures
+  // captures (diagonal only)
   for (const dc of [-1, 1]) {
     const r = fromRow + dir;
     const c = fromCol + dc;
     if (!inBounds(r, c)) continue;
     const target = board[r][c];
+    // Pawns can only capture diagonally if there's an enemy piece
     if (!isEmpty(target) && !sameColor(moving, target)) {
       if (r === promotionRow) {
         for (const pp of promoPieces) {

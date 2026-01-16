@@ -194,10 +194,13 @@ export function applyMove(state, move) {
     const capRow = toRow - dir;
     const capCol = toCol;
     captured = board[capRow]?.[capCol] || "";
-    board[capRow][capCol] = "";
+    // Remove the captured pawn first
+    if (capRow >= 0 && capRow < 8 && capCol >= 0 && capCol < 8) {
+      board[capRow][capCol] = "";
+    }
   }
 
-  // Move piece
+  // Clear source square
   board[fromRow][fromCol] = "";
 
   // Castling: move king to destination and rook accordingly
@@ -227,6 +230,7 @@ export function applyMove(state, move) {
       }
     }
   } else {
+    // For regular captures, the captured piece is already on toRow/toCol and will be overwritten
     // Promotion sets the promoted piece (already case-correct in move generation)
     if (isPromotion && promotedTo) {
       board[toRow][toCol] = promotedTo;
