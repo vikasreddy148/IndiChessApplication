@@ -6,6 +6,7 @@ import { applyMove, initialStateFromBoard, parseFEN, toFEN } from "../chess/stat
 import { legalMovesForSquare, detectGameEndBasic } from "../chess/legalMoves";
 import { pieceColor } from "../chess/board";
 import { useAuth } from "../auth/AuthContext";
+import "../styles/gamepage.css";
 
 const PIECES = {
   K: "♔",
@@ -37,17 +38,17 @@ function Board({ board, selected, legalTargets, onSquareClick, orientation }) {
   // Render using display coordinates (dr,dc) and map to actual board coordinates.
   // This avoids mismatches where we flip rows but not columns (or vice versa).
   const isBlack = orientation === "black";
+  const ranks = isBlack ? ["1", "2", "3", "4", "5", "6", "7", "8"] : ["8", "7", "6", "5", "4", "3", "2", "1"];
+  const files = isBlack ? ["h", "g", "f", "e", "d", "c", "b", "a"] : ["a", "b", "c", "d", "e", "f", "g", "h"];
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(8, 56px)",
-        gridTemplateRows: "repeat(8, 56px)",
-        border: "1px solid rgba(255,255,255,0.2)",
-        width: 56 * 8
-      }}
-    >
+    <div className="ig-boardframe">
+      <div className="ig-coords-ranks">
+        {ranks.map((r) => (
+          <div key={r}>{r}</div>
+        ))}
+      </div>
+      <div className="ig-boardgrid">
       {Array.from({ length: 8 }).map((_, dr) =>
         Array.from({ length: 8 }).map((__, dc) => {
           const rowIndex = isBlack ? 7 - dr : dr;
@@ -63,25 +64,24 @@ function Board({ board, selected, legalTargets, onSquareClick, orientation }) {
             <button
               key={`${dr}-${dc}`}
               onClick={() => onSquareClick(rowIndex, colIndex)}
-              style={{
-                width: 56,
-                height: 56,
-                cursor: "pointer",
-                border: isSel ? "2px solid #74b9ff" : "1px solid transparent",
-                background: isDark ? "#1d2b3a" : "#e8ecf3",
-                color: isDark ? "#e8ecf3" : "#0b1020",
-                fontSize: 30,
-                display: "grid",
-                placeItems: "center",
-                outline: isTarget ? "3px solid rgba(46, 213, 115, 0.75)" : "none",
-                outlineOffset: isTarget ? "-3px" : "0"
-              }}
+              className={[
+                "ig-sq",
+                isDark ? "dark" : "light",
+                isSel ? "selected" : "",
+                isTarget ? "target" : ""
+              ].join(" ")}
             >
               {PIECES[piece] || ""}
             </button>
           );
         })
       )}
+      </div>
+      <div className="ig-coords-files">
+        {files.map((f) => (
+          <div key={f}>{f}</div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -436,7 +436,7 @@ export function GamePage() {
   }
 
   return (
-    <div style={{ padding: 24, display: "grid", gridTemplateColumns: "auto 1fr", gap: 24 }}>
+    <div className="ig-game">
       <PromotionModal
         open={promotion.open}
         color={playerColor}
@@ -463,107 +463,178 @@ export function GamePage() {
           setDrawOffer({ open: false, from: null });
         }}
       />
-      <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h2 style={{ marginTop: 0 }}>Game #{matchId}</h2>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <span style={{ opacity: 0.9 }}>
-              <b>{auth.user?.username}</b>
-            </span>
-            <button
-              onClick={async () => {
-                try {
-                  await auth.logout();
-                } finally {
-                  nav("/login");
-                }
-              }}
-            >
-              Logout
+      <div className="ig-shell">
+        <aside className="ig-sidebar">
+          <div className="ig-brand">
+            <div className="ig-brand-mark" />
+            <div>IndiChess</div>
+          </div>
+
+          <div className="ig-nav">
+            <button className="ig-navbtn" type="button" onClick={() => nav("/home")}>
+              <span className="ig-dot" /> <span>Home</span>
+            </button>
+            <button className="ig-navbtn" type="button">
+              <span className="ig-dot" /> <span>Play</span>
+            </button>
+            <button className="ig-navbtn" type="button">
+              <span className="ig-dot" /> <span>Puzzles</span>
+            </button>
+            <button className="ig-navbtn" type="button">
+              <span className="ig-dot" /> <span>Learn</span>
             </button>
           </div>
-        </div>
-        <div style={{ marginBottom: 12, opacity: 0.9 }}>
-          You are <b>{playerColor || "…"}</b> — {myTurn ? "your move" : "waiting"}
-        </div>
-        <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-          <button
-            disabled={Boolean(gameEnd?.over)}
-            onClick={() => {
-              const client = stompRef.current;
-              if (!client || !connectedRef.current) {
-                setError("WebSocket not connected");
-                return;
-              }
-              client.publish({
-                destination: `/app/game/${matchId}/draw`,
-                body: JSON.stringify({ type: "DRAW_OFFER", matchId: Number(matchId), timestamp: new Date().toISOString() })
-              });
-              setStatusText("Draw offer sent");
-            }}
-          >
-            Offer draw
-          </button>
-          <button
-            disabled={Boolean(gameEnd?.over)}
-            onClick={() => {
-              const client = stompRef.current;
-              if (!client || !connectedRef.current) {
-                setError("WebSocket not connected");
-                return;
-              }
-              client.publish({
-                destination: `/app/game/${matchId}/resign`,
-                body: JSON.stringify({ type: "RESIGN", matchId: Number(matchId), timestamp: new Date().toISOString() })
-              });
-              setStatusText("You resigned");
-              setGameEnd({ over: true, result: "ended", reason: "resignation" });
-            }}
-          >
-            Resign
-          </button>
-        </div>
-        {gameEnd?.over ? (
-          <div style={{ marginBottom: 12, padding: 10, border: "1px solid rgba(255,255,255,0.2)" }}>
-            Game over: <b>{gameEnd.reason}</b> ({gameEnd.result})
-          </div>
-        ) : null}
-        {statusText ? <div style={{ marginBottom: 12, opacity: 0.85 }}>{statusText}</div> : null}
-        {error ? <div style={{ color: "#ff9a9a", marginBottom: 12 }}>{error}</div> : null}
-        {state?.board ? (
-          <Board
-            board={state.board}
-            selected={selected}
-            legalTargets={legalTargets}
-            onSquareClick={onSquareClick}
-            orientation={orientation}
-          />
-        ) : (
-          <div>Loading board…</div>
-        )}
-      </div>
 
-      <div style={{ maxWidth: 360 }}>
-        <h3 style={{ marginTop: 0 }}>Moves</h3>
-        <div
-          style={{
-            border: "1px solid rgba(255,255,255,0.15)",
-            borderRadius: 8,
-            padding: 12,
-            minHeight: 240,
-            background: "rgba(255,255,255,0.03)"
-          }}
-        >
-          {moves.length === 0 ? (
-            <div style={{ opacity: 0.8 }}>No moves yet</div>
-          ) : (
-            <ol style={{ margin: 0, paddingLeft: 18 }}>
-              {moves.map((m, i) => (
-                <li key={i}>{m}</li>
-              ))}
-            </ol>
-          )}
-        </div>
+          <div className="ig-sidecard">
+            <div className="ig-row" style={{ justifyContent: "space-between" }}>
+              <span style={{ fontSize: 13, opacity: 0.9 }}>Signed in</span>
+              <span className="ig-pill">{auth.user?.username || "…"}</span>
+            </div>
+            <div className="ig-row">
+              <button
+                className="ig-btn ig-btn-primary"
+                type="button"
+                onClick={() => {
+                  let type = null;
+                  try {
+                    type = localStorage.getItem("lastGameType");
+                  } catch {
+                    type = null;
+                  }
+                  if (!type) type = "STANDARD";
+                  nav(`/home?start=${encodeURIComponent(type)}`);
+                }}
+                title="Start a new match in the same mode"
+              >
+                Rematch
+              </button>
+              <button
+                className="ig-btn"
+                type="button"
+                onClick={async () => {
+                  try {
+                    await auth.logout();
+                  } finally {
+                    nav("/login");
+                  }
+                }}
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </aside>
+
+        <main className="ig-center">
+          <div className="ig-card ig-playerbar">
+            <div className="ig-player-left">
+              <div className="ig-avatar" />
+              <div>
+                <div className="ig-player-name">Opponent</div>
+                <div className="ig-player-sub">{playerColor === "white" ? "Black" : "White"}</div>
+              </div>
+            </div>
+            <div className="ig-pill">{myTurn ? "Your move" : "Waiting"}</div>
+          </div>
+
+          {gameEnd?.over ? (
+            <div className="ig-status">
+              Game over: <b>{gameEnd.reason}</b> ({gameEnd.result})
+            </div>
+          ) : null}
+          {statusText ? <div className="ig-status">{statusText}</div> : null}
+          {error ? <div className="ig-error">{error}</div> : null}
+
+          <div className="ig-card ig-boardwrap">
+            {state?.board ? (
+              <Board
+                board={state.board}
+                selected={selected}
+                legalTargets={legalTargets}
+                onSquareClick={onSquareClick}
+                orientation={orientation}
+              />
+            ) : (
+              <div style={{ padding: 12 }}>Loading board…</div>
+            )}
+          </div>
+
+          <div className="ig-card ig-playerbar">
+            <div className="ig-player-left">
+              <div className="ig-avatar" />
+              <div>
+                <div className="ig-player-name">{auth.user?.username || "You"}</div>
+                <div className="ig-player-sub">{playerColor || "…"}</div>
+              </div>
+            </div>
+            <div className="ig-pill">Game #{matchId}</div>
+          </div>
+        </main>
+
+        <aside className="ig-right">
+          <div className="ig-card">
+            <div className="ig-panel-title">Move Explorer</div>
+            <div className="ig-moves">
+              {moves.length === 0 ? (
+                <div style={{ opacity: 0.8 }}>No moves yet</div>
+              ) : (
+                Array.from({ length: Math.ceil(moves.length / 2) }).map((_, i) => {
+                  const whiteMove = moves[i * 2];
+                  const blackMove = moves[i * 2 + 1];
+                  return (
+                    <div className="ig-move-row" key={i}>
+                      <div className="ig-move-no">{i + 1}.</div>
+                      <div className="ig-move">{whiteMove || ""}</div>
+                      <div className="ig-move">{blackMove || ""}</div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <div className="ig-actions">
+              <button
+                className="ig-action"
+                disabled={Boolean(gameEnd?.over)}
+                onClick={() => {
+                  const client = stompRef.current;
+                  if (!client || !connectedRef.current) {
+                    setError("WebSocket not connected");
+                    return;
+                  }
+                  client.publish({
+                    destination: `/app/game/${matchId}/draw`,
+                    body: JSON.stringify({ type: "DRAW_OFFER", matchId: Number(matchId), timestamp: new Date().toISOString() })
+                  });
+                  setStatusText("Draw offer sent");
+                }}
+              >
+                🤝 Draw
+              </button>
+              <button className="ig-action" onClick={() => nav("/home")}>
+                🏠 Home
+              </button>
+              <button
+                className="ig-action ig-action-danger"
+                disabled={Boolean(gameEnd?.over)}
+                onClick={() => {
+                  const client = stompRef.current;
+                  if (!client || !connectedRef.current) {
+                    setError("WebSocket not connected");
+                    return;
+                  }
+                  client.publish({
+                    destination: `/app/game/${matchId}/resign`,
+                    body: JSON.stringify({ type: "RESIGN", matchId: Number(matchId), timestamp: new Date().toISOString() })
+                  });
+                  setStatusText("You resigned");
+                  setGameEnd({ over: true, result: "ended", reason: "resignation" });
+                }}
+              >
+                🏳️ Resign
+              </button>
+            </div>
+          </div>
+        </aside>
       </div>
     </div>
   );

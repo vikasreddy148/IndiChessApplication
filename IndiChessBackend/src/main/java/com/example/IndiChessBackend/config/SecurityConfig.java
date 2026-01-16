@@ -59,11 +59,12 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // Allow any localhost port (covers CRA dev server, etc.)
-        configuration.setAllowedOriginPatterns(List.of("http://localhost:*", "http://127.0.0.1:*"));
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));  // Allow all HTTP methods (GET, POST, PUT, DELETE, etc.)
+        // Explicitly allow the frontend origin (required when allowCredentials is true)
+        configuration.setAllowedOrigins(List.of("http://localhost:3000", "http://127.0.0.1:3000"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));  // Allow all HTTP methods
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true); // Allow credentials (cookies, JWT tokens)
+        configuration.setExposedHeaders(List.of("*")); // Expose all headers to the client
 
         configuration.setMaxAge(3600L);
 
