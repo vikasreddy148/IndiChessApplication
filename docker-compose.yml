@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./IndiChessBackend
+    container_name: indichess-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/indichessdb?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=root
+    depends_on:
+      - db
+    restart: on-failure
+    networks:
+      - indichess-network
+
+  frontend:
+    build: ./Indichessfrontend
+    container_name: indichess-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - indichess-network
+
+  db:
+    image: mysql:8.0
+    container_name: indichess-db
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: indichessdb
+    ports:
+      - "3307:3306"
+    volumes:
+      - indichess_mysql_data:/var/lib/mysql
+    networks:
+      - indichess-network
+
+networks:
+  indichess-network:
+    driver: bridge
+
+volumes:
+  indichess_mysql_data:
